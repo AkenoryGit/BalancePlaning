@@ -1,0 +1,20 @@
+//
+//  User.swift
+//  BalancePlaning
+//
+//  Created by Дмитрий Дудник on 04.02.2026.
+//
+
+import SwiftUI
+import SwiftData
+
+@Model
+final class User {
+    @Attribute(.unique) var id: UUID
+    @Attribute(.unique) var login: String
+    
+    init (login: String, id: UUID = UUID() ) {
+        self.login = login
+        self.id = id
+    }
+}
