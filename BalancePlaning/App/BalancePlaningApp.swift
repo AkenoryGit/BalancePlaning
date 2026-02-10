@@ -15,6 +15,6 @@ struct BalancePlaningApp: App {
         WindowGroup {
             ContentView()
         }
-        .modelContainer(for: [User.self])
+        .modelContainer(for: [User.self]) // контейнер с пользователями хранится в корне приложения
     }
 }

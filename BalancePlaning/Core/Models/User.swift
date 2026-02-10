@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 
+// модель пользователя
 @Model
 final class User {
     @Attribute(.unique) var id: UUID
