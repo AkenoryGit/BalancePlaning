@@ -98,6 +98,6 @@ extension RegistrationView {
     }
 }
 
-#Preview {
-    RegistrationView(isRegistration: .constant(true), isLogin: .constant(false))
-}
+//#Preview {
+//    RegistrationView(isRegistration: .constant(true), isLogin: .constant(false))
+//}

@@ -9,12 +9,18 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
+    @Environment(\.modelContext) private var context
     // Отслеживаем какое вью выбрать, с регистрацией или авторизацией
     @State private var isRegistration: Bool = false
     // смотрим, пользователь авторизовался или нет
     @State private var isLoggedIn: Bool = false
     
+    var userService: UserService {
+        UserService(context: context)
+    }
+    
     var body: some View {
+        
         TabView {
             // если не на окне регистрации и не залогинен, то показываем окно авторизации
             if !isRegistration && !isLoggedIn {
@@ -36,9 +42,16 @@ struct ContentView: View {
                     }
             }
         }
+        .onAppear {
+            isLoggedIn = userService.getCurrentUser() != nil
+        }
+        .onChange(of: context) {
+            isLoggedIn = userService.getCurrentUser() != nil
+            
+        }
     }
 }
 
-#Preview {
-    ContentView()
-}
+//#Preview {
+//    ContentView()
+//}

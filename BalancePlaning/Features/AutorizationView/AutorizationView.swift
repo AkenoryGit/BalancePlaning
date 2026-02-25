@@ -37,9 +37,7 @@ struct AutorizationView: View {
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
-                    SecureField("Пароль", text: $password)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: geometry.size.width - 40, height: 50)
+                    CustomSecureField(password: $password, title: "Пароль")
                 }
                 // кнопка "Войти" с проверкой корректности ввода формата почты и проверки не пустое ли поле с почтой
                 Button {
