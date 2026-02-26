@@ -55,7 +55,7 @@ struct Header: View {
                 // ставим аватарку в центр
                 Image(systemName: avatarSystemName)
                     .resizable()
-                    .frame(width: 140, height: 120)
+                    .frame(width: 100, height: 100)
                     .foregroundStyle(Color.black.opacity(0.3))
                     .padding(.top, 105)
                     .padding(.trailing, trailingAvatar)
@@ -69,6 +69,6 @@ struct Header: View {
     }
 }
 
-#Preview {
-    Header(title: "Авторизация")
-}
+//#Preview {
+//    Header(title: "Авторизация")
+//}

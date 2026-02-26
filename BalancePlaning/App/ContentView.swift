@@ -36,7 +36,7 @@ struct ContentView: View {
                     }
                 // в остальных случаях показываем окно профиля
             } else {
-                ProfileView(headView: Header(title: "Профиль"), isLogged: $isLoggedIn)
+                ProfileView(headView: Header(title: "Профиль"), isLogged: $isLoggedIn, accountsView: AccountsView())
                     .tabItem {
                         Label("Профиль", systemImage: "person.crop.square")
                     }
