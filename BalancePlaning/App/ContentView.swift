@@ -40,6 +40,10 @@ struct ContentView: View {
                     .tabItem {
                         Label("Профиль", systemImage: "person.crop.square")
                     }
+                TransactionsView()
+                    .tabItem {
+                        Label("Транзакции", systemImage: "book")
+                    }
             }
         }
         .onAppear {

@@ -34,5 +34,6 @@ struct CustomSecureField: View {
                 .padding(.trailing, 20)
             }
         }
+        .frame(height: 50)
     }
 }

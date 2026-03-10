@@ -23,14 +23,12 @@ class UserService {
     // узнаем текущего пользователя по сохраненному id пользователя в UserDefaults
     func getCurrentUser() -> User? {
         // вытаскиваем id текущего пользователя в формате String
-        guard let uuidString = UserDefaults.standard.string(forKey: UserDefaultKeys.currentUserId),
-              // пытаемся перевести id из String в UUID
-              let currentId = UUID(uuidString: uuidString) else {
+        guard let uuidString = currentUserId() else {
             return nil
         }
         
         // ищем в SwiftData пользователей с таким же id
-        let fetch = FetchDescriptor<User>(predicate: #Predicate { $0.id == currentId })
+        let fetch = FetchDescriptor<User>(predicate: #Predicate { $0.id == uuidString })
         
         // пытаемся вернуть первого найденного в базе пользователя с таким id
         do {

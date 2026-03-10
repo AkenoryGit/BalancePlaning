@@ -18,8 +18,7 @@ struct CategoriesView: View {
     var isIncome: Bool
     
     private var userCategories: [Category] {
-        guard let userIdString = UserDefaults.standard.string(forKey: UserDefaultKeys.currentUserId),
-              let userId = UUID(uuidString: userIdString) else {
+        guard let userId = currentUserId() else {
             return []
         }
         return allCategories.filter { $0.userId == userId }
@@ -143,22 +142,29 @@ struct AddCategorySheet: View {
     @Environment(\.modelContext) private var context
     
     var body: some View {
-        VStack {
-            TextField("Название категории", text: $categoryName)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .padding()
-            Button("Добавить") {
-                guard !categoryName.isEmpty else {
-                    print("Не заполнена информация")
-                    return
+        NavigationStack {
+            VStack(spacing: 20) {
+                Text("Новая категория")
+                    .font(.title2.bold())
+                TextField("Название категории", text: $categoryName)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding()
+                Button("Добавить") {
+                    guard !categoryName.isEmpty else {
+                        print("Не заполнена информация")
+                        return
+                    }
+                    let service = CategoryService(context: context)
+                    service.addCategory(categoryName: categoryName, type: type)
+                    dismiss()
                 }
-                let service = CategoryService(context: context)
-                service.addCategory(categoryName: categoryName, type: type)
-                dismiss()
+                Button("Отмена") {
+                    dismiss()
+                }
             }
-            Button("Отмена") {
-                dismiss()
-            }
+            .padding()
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
     }
 }

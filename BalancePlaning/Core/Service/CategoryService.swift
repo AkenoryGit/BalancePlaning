@@ -18,12 +18,11 @@ class CategoryService {
     }
     
     func addCategory(categoryName: String, type: CategoryType) {
-        guard let uuidString = UserDefaults.standard.string(forKey: UserDefaultKeys.currentUserId),
-              let userId = UUID(uuidString: uuidString) else {
+        guard let uuidString = currentUserId() else {
             print("Нет текущего пользователя")
             return
         }
-        let newCategory = Category(id: UUID(), userId: userId, name: categoryName, type: type)
+        let newCategory = Category(id: UUID(), userId: uuidString, name: categoryName, type: type)
         
         print("Контекст в AddCategorySheet: \(ObjectIdentifier(context))")
         

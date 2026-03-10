@@ -36,12 +36,8 @@ struct RegistrationView: View {
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
                         .frame(width: geometry.size.width - 40, height: 50)
-                    SecureField("Пароль", text: $password)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: geometry.size.width - 40, height: 50)
-                    SecureField("Повторите пароль", text: $passwordConfirmation)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: geometry.size.width - 40, height: 50)
+                    CustomSecureField(password: $password, title: "Пароль")
+                    CustomSecureField(password: $passwordConfirmation, title: "Пароль")
                 }
                 Button("Зарегистрироваться") {
                     if password.isEmpty {
