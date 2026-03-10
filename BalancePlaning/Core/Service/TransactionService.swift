@@ -92,4 +92,15 @@ struct TransactionService {
             context.delete(newIncome)
         }
     }
+    
+    func dellTransaction(_ transaction: Transaction) {
+        context.delete(transaction)
+        
+        do {
+            try context.save()
+            print("Транзакция \(transaction) была успешно удалена!")
+        } catch {
+            print("Ошибка удаления транзакции: \(error)")
+        }
+    }
 }

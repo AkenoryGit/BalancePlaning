@@ -16,6 +16,8 @@ struct TransactionsCategoryView: View {
     @State private var isExpensePresented: Bool = false
     @State private var isIncomePresented: Bool = false
     
+    @Binding var isRootPresented: Bool
+    
     var transactionService: TransactionService {
         TransactionService(context: context)
     }
@@ -47,13 +49,13 @@ struct TransactionsCategoryView: View {
             .padding(.horizontal)
         }
         .sheet(isPresented: $isTransactionPresented) {
-            AddTransactionView(transactionService: transactionService)
+            AddTransactionView(isRootPresented: $isRootPresented, transactionService: transactionService)
         }
         .sheet(isPresented: $isExpensePresented) {
-            AddExpenseView(transactionService: transactionService)
+            AddExpenseView(isRootPresented: $isRootPresented, transactionService: transactionService)
         }
         .sheet(isPresented: $isIncomePresented) {
-            AddIncomeView(transactionService: transactionService)
+            AddIncomeView(isRootPresented: $isRootPresented, transactionService: transactionService)
         }
     }
 }
@@ -63,6 +65,8 @@ struct AddTransactionView: View {
     @Environment(\.modelContext) private var context
     
     @Query private var allUserAccounts: [Account]
+    
+    @Binding var isRootPresented: Bool
     
     @State var fromAccount: Account?
     @State var toAccount: Account?
@@ -86,6 +90,7 @@ struct AddTransactionView: View {
         NavigationStack {
             VStack {
                 Picker("Перевод со счёта", selection: $fromAccount) {
+                    Text("Не выбрано").tag(Optional<Account>.none)
                     ForEach(allUserAccounts) { account in
                         Text("\(account.name) \(accountService.currentBalance(for: account))")
                             .tag(Optional(account))
@@ -93,6 +98,7 @@ struct AddTransactionView: View {
                 }
                 .pickerStyle(.navigationLink)
                 Picker("Перевод на счёт", selection: $toAccount) {
+                    Text("Не выбрано").tag(Optional<Account>.none)
                     ForEach(allUserAccounts) { account in
                         Text("\(account.name) \(accountService.currentBalance(for: account))")
                             .tag(Optional(account))
@@ -118,6 +124,7 @@ struct AddTransactionView: View {
                         return
                     }
                     transactionService.addTransactions(from: from, to: to, amount: amountDecimal, date: date)
+                    isRootPresented = false
                     dismiss()
                 }
                 Button("Отмена", role: .destructive) {
@@ -137,6 +144,8 @@ struct AddExpenseView: View {
     
     @Query private var allUserAccounts: [Account]
     @Query private var allCategories: [Category]
+    
+    @Binding var isRootPresented: Bool
     
     @State var fromAccount: Account?
     @State var toCategory: Category?
@@ -168,12 +177,14 @@ struct AddExpenseView: View {
             VStack {
                 Picker("Оплата со счёта", selection: $fromAccount) {
                     ForEach(allUserAccounts) { account in
+                        Text("Не выбрано").tag(Optional<Account>.none)
                         Text("\(account.name) \(accountService.currentBalance(for: account))")
                             .tag(Optional(account))
                     }
                 }
                 .pickerStyle(.navigationLink)
                 Picker("Оплата категории", selection: $toCategory) {
+                    Text("Не выбрано").tag(Optional<Category>.none)
                     ForEach(expenseCategories) { category in
                         Text("\(category.name)")
                             .tag(Optional(category))
@@ -199,6 +210,7 @@ struct AddExpenseView: View {
                         return
                     }
                     transactionService.addExpenense(from: from, to: to, amount: amountDecimal, date: date)
+                    isRootPresented = false
                     dismiss()
                 }
                 Button("Отмена", role: .destructive) {
@@ -218,6 +230,8 @@ struct AddIncomeView: View {
     
     @Query private var allUserAccounts: [Account]
     @Query private var allCategories: [Category]
+    
+    @Binding var isRootPresented: Bool
     
     @State var fromCategory: Category?
     @State var toAccount: Account?
@@ -248,6 +262,7 @@ struct AddIncomeView: View {
         NavigationStack {
             VStack {
                 Picker("Поступление с категории", selection: $fromCategory) {
+                    Text("Не выбрано").tag(Optional<Category>.none)
                     ForEach(incomeCategories) { category in
                         Text("\(category.name)")
                             .tag(Optional(category))
@@ -255,6 +270,7 @@ struct AddIncomeView: View {
                 }
                 .pickerStyle(.navigationLink)
                 Picker("Поступление на счёт", selection: $toAccount) {
+                    Text("Не выбрано").tag(Optional<Account>.none)
                     ForEach(userAccounts) { account in
                         Text("\(account.name) \(accountService.currentBalance(for: account))")
                             .tag(Optional(account))
@@ -280,6 +296,7 @@ struct AddIncomeView: View {
                         return
                     }
                     transactionService.addIncome(from: from, to: to, amount: amountDecimal, date: date)
+                    isRootPresented = false
                     dismiss()
                 }
                 Button("Отмена", role: .destructive) {
