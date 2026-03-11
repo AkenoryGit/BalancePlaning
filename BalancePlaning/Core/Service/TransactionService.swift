@@ -9,8 +9,6 @@ import SwiftUI
 import SwiftData
 
 struct TransactionService {
-    @Query(sort: \Account.userId) var accounts:[Account] = []
-    @Query(sort: \Category.userId) var categories:[Category] = []
     
     private let context: ModelContext
     
@@ -18,78 +16,159 @@ struct TransactionService {
         self.context = context
     }
     
-    func addTransactions(from: Account, to: Account, amount: Decimal, date: Date) {
+    func addTransactions(from: Account, to: Account, amount: Decimal, startDate: Date, endDate: Date? = nil,
+                         interval: RecurringInterval? = nil, intervalDays: Int? = nil) {
         guard let curUserID = currentUserId() else {
             print("Пользователь не найден")
             return
         }
-        let newTransaction = Transaction(
-            fromAccount: from,
-            toAccount: to,
-            userId: curUserID,
-            amount: amount,
-            date: date,
-            type: .transaction
-        )
+        var newTransaction: [Transaction] = []
+        if interval == nil {
+            newTransaction.append(Transaction(
+                fromAccount: from,
+                toAccount: to,
+                userId: curUserID,
+                amount: amount,
+                date: startDate,
+                type: .transaction
+            ))
+        } else {
+            guard let endDate = endDate else {
+                print("Не указана дата окончания для повторяющейся транзакции")
+                return
+            }
+            guard let interval = interval else { return }
+            let groupId = UUID()
+            let days = generateDates(from: startDate, to: endDate, interval: interval)
+            for day in days {
+                newTransaction.append(Transaction(
+                    fromAccount: from,
+                    toAccount: to,
+                    userId: curUserID,
+                    amount: amount,
+                    date: day,
+                    type: .transaction,
+                    recurringGroupId: groupId,
+                    recurringInterval: interval,
+                    recurringIntervalDays: intervalDays
+                ))
+            }
+        }
         
-        context.insert(newTransaction)
+        for transaction in newTransaction {
+            context.insert(transaction) }
         
         do {
             try context.save()
             print("Перевод \(newTransaction) был успешно создан!")
         } catch {
             print("Ошибка создания перевода: \(error)")
-            context.delete(newTransaction)
+            for transaction in newTransaction {
+                context.delete(transaction) }
         }
     }
     
-    func addExpenense(from: Account, to: Category, amount: Decimal, date: Date) {
+    func addExpenense(from: Account, to: Category, amount: Decimal, startDate: Date, endDate: Date? = nil,
+                      interval: RecurringInterval? = nil, intervalDays: Int? = nil) {
         guard let curUserID = currentUserId() else {
             print("Пользователь не найден")
             return
         }
-        let newExpense = Transaction(
+        var newExpense: [Transaction] = []
+        if interval == nil {
+            newExpense.append(Transaction(
             fromAccount: from,
             toCategory: to,
             userId: curUserID,
             amount: amount,
-            date: date,
+            date: startDate,
             type: .expense
-        )
+        ))
+        } else {
+            guard let endDate = endDate else {
+                print("Не указана дата окончания для повторяющейся оплаты")
+                return
+            }
+            guard let interval = interval else { return }
+            let groupId = UUID()
+            let days = generateDates(from: startDate, to: endDate, interval: interval)
+            for day in days {
+                newExpense.append(Transaction(
+                    fromAccount: from,
+                    toCategory: to,
+                    userId: curUserID,
+                    amount: amount,
+                    date: day,
+                    type: .expense,
+                    recurringGroupId: groupId,
+                    recurringInterval: interval,
+                    recurringIntervalDays: intervalDays
+                ))
+            }
+        }
         
-        context.insert(newExpense)
+        for expense in newExpense {
+            context.insert(expense) }
         
         do {
             try context.save()
-            print("Расход \(newExpense) был успешно создан!")
+            print("Оплата \(newExpense) была успешно создана!")
         } catch {
-            print("Ошибка создания расхода: \(error)")
-            context.delete(newExpense)
+            print("Ошибка создания оплаты: \(error)")
+            for expense in newExpense {
+                context.delete(expense) }
         }
     }
     
-    func addIncome(from: Category, to: Account, amount: Decimal, date: Date) {
+    func addIncome(from: Category, to: Account, amount: Decimal, startDate: Date, endDate: Date? = nil,
+                   interval: RecurringInterval? = nil, intervalDays: Int? = nil) {
         guard let curUserID = currentUserId() else {
             print("Пользователь не найден")
             return
         }
-        let newIncome = Transaction(
-            fromCategory: from,
-            toAccount: to,
-            userId: curUserID,
-            amount: amount,
-            date: date,
-            type: .income
-        )
+        var newIncome: [Transaction] = []
+        if interval == nil {
+            newIncome.append(Transaction(
+                fromCategory: from,
+                toAccount: to,
+                userId: curUserID,
+                amount: amount,
+                date: startDate,
+                type: .income
+            ))
+        } else {
+            guard let endDate = endDate else {
+                print("Не указана дата окончания для повторяющегося поступления")
+                return
+            }
+            guard let interval = interval else { return }
+            let groupId = UUID()
+            let days = generateDates(from: startDate, to: endDate, interval: interval)
+            for day in days {
+                newIncome.append(Transaction(
+                    fromCategory: from,
+                    toAccount: to,
+                    userId: curUserID,
+                    amount: amount,
+                    date: day,
+                    type: .income,
+                    recurringGroupId: groupId,
+                    recurringInterval: interval,
+                    recurringIntervalDays: intervalDays
+                ))
+            }
+        }
         
-        context.insert(newIncome)
+        for income in newIncome {
+            context.insert(income) }
         
         do {
             try context.save()
-            print("Поступление \(newIncome) было успешно создано!")
+            print("Постепление \(newIncome) было успешно создано!")
         } catch {
             print("Ошибка создания поступления: \(error)")
-            context.delete(newIncome)
+            for income in newIncome {
+                context.delete(income) }
         }
     }
     
@@ -102,5 +181,28 @@ struct TransactionService {
         } catch {
             print("Ошибка удаления транзакции: \(error)")
         }
+    }
+    
+    func generateDates(from startDate: Date, to endDate: Date, interval: RecurringInterval, intervalDays: Int? = nil) -> [Date] {
+        var dates: [Date] = []
+        var current = startDate
+        
+        while current <= endDate {
+            dates.append(current)
+            switch interval {
+            case .daily:
+                current = Calendar.current.date(byAdding: .day, value: 1, to: current) ?? current
+            case .everyNDays:
+                current = Calendar.current.date(byAdding: .day, value: intervalDays ?? 1, to: current) ?? current
+            case .weekly:
+                current = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: current) ?? current
+            case .biweekly:
+                current = Calendar.current.date(byAdding: .weekOfYear, value: 2, to: current) ?? current
+            case .monthly:
+                current = Calendar.current.date(byAdding: .month, value: 1, to: current) ?? current
+            }
+        }
+        
+        return dates
     }
 }

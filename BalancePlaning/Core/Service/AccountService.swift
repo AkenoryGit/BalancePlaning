@@ -115,4 +115,23 @@ class AccountService {
             finishDate: date
         )
     }
+    
+    func totalBalance(at date: Date) -> Decimal {
+        let accounts = fetchUserAccounts()
+        return accounts.reduce(Decimal.zero) { $0 + balance(for: $1, at: date) }
+    }
+    
+    private func fetchUserAccounts() -> [Account] {
+        guard let userId = currentUserId() else { return [] }
+        
+        let predicate = #Predicate<Account> { $0.userId == userId }
+        let descriptor = FetchDescriptor<Account>(predicate: predicate)
+        
+        do {
+            return try context.fetch(descriptor)
+        } catch {
+            print("Ошибка загрузки счетов: \(error)")
+            return []
+        }
+    }
 }

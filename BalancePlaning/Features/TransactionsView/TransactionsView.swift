@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 
 struct TransactionsView: View {
+    @Environment(\.modelContext) var context
     @State private var date: Date = Date.now
     @State private var isPresented: Bool = false
     @State private var showDatePicker: Bool = false
@@ -32,12 +33,21 @@ struct TransactionsView: View {
     }
     
     var topHead = TopHead(title: "Транзакции")
+
+    private var accountService: AccountService {
+        AccountService(context: context)
+    }
     
     var body: some View {
         VStack {
             topHead
                 .frame(height: 50)
                 .padding(.top)
+            Text("Всего денег: ")
+                .font(.largeTitle)
+                .padding(.top, 30)
+            Text(accountService.totalBalance(at: date), format: .number.precision(.fractionLength(0...2)))
+                .font(.largeTitle.bold())
             if !showAllTransactions {
                 HStack {
                     Button {
@@ -47,7 +57,6 @@ struct TransactionsView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 20)
                     Button(date.formatted(.dateTime
                         .locale(Locale(identifier: "ru_RU"))
                         .year(.defaultDigits)
@@ -59,7 +68,6 @@ struct TransactionsView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 20)
                     .sheet(isPresented: $showDatePicker) {
                         DatePicker("", selection: $date, displayedComponents: [.date])
                             .datePickerStyle(.graphical)
@@ -79,7 +87,6 @@ struct TransactionsView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 20)
                 }
             } else {
                 Button {
@@ -97,7 +104,7 @@ struct TransactionsView: View {
                         selectedTransacion = transaction
                     }) {
                         Spacer()
-                        Text("\(transaction.type.displayName) : \(transaction.date, format: .dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits)) - \(transaction.amount) руб")
+                        Text("\(transaction.type.displayName) : \(transaction.date, format: .dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits)) - \(transaction.amount , format: .number.precision(.fractionLength(0...2))) руб")
                             .font(.headline)
                             .foregroundStyle(.primary)
                         Spacer()
@@ -112,7 +119,7 @@ struct TransactionsView: View {
                         selectedTransacion = transaction
                     }) {
                         Spacer()
-                        Text("\(transaction.type.displayName) : \(transaction.date, format: .dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits)) - \(transaction.amount) руб")
+                        Text("\(transaction.type.displayName) : \(transaction.date, format: .dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits)) - \(transaction.amount , format: .number.precision(.fractionLength(0...2))) руб")
                             .font(.headline)
                             .foregroundStyle(.primary)
                         Spacer()
@@ -141,25 +148,31 @@ struct TransactionDetailView: View {
     let transaction: Transaction
     
     var body: some View {
-        Text("Детали операции:")
-        Text(transaction.type.displayName)
-        Text(transaction.date, format: .dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits))
-        Text("\(transaction.amount) руб.")
-        if transaction.type == .income {
-            Text("Пополнение баланса счета \(transaction.toAccount?.name ?? "неизвестно") с категории \(transaction.fromCategory?.name ?? "неизвестно")")
-        } else if transaction.type == .expense {
-            Text("Платёж со счета \(transaction.fromAccount?.name ?? "неизвестно") по категории \(transaction.toCategory?.name ?? "неизвестно")")
+        VStack(spacing: 20) {
+            Text("Детали операции:")
+                .font(.largeTitle)
+            Text("\(transaction.type.displayName) \(transaction.date, format: .dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits))")
+                .font(.title2)
+            Text("На сумму ^[\(transaction.amount, format: .number)](bold: true) руб")
+                .bold()
+            if transaction.type == .income {
+                Text("Пополнение баланса счета \(transaction.toAccount?.name ?? "неизвестно")")
+                Text("С категории \(transaction.fromCategory?.name ?? "неизвестно")")
+            } else if transaction.type == .expense {
+                Text("Платёж со счета \(transaction.fromAccount?.name ?? "неизвестно")")
+                Text("По категории \(transaction.toCategory?.name ?? "неизвестно")")
             } else {
-                Text("Перевод со счета \(transaction.fromAccount?.name ?? "неизвестно") на счет \(transaction.toAccount?.name ?? "неизвестно")")
+                Text("Перевод со счета \(transaction.fromAccount?.name ?? "неизвестно")")
+                Text("На счет \(transaction.toAccount?.name ?? "неизвестно")")
             }
-        Button("Удалить операцию") {
-            let service = TransactionService(context: context)
-            service.dellTransaction(transaction)
-            dismiss()
-        }
-        Button("Закрыть окно") {
-            dismiss()
+            Button("Удалить операцию") {
+                let service = TransactionService(context: context)
+                service.dellTransaction(transaction)
+                dismiss()
+            }
+            Button("Закрыть окно") {
+                dismiss()
+            }
         }
     }
-    
 }
