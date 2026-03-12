@@ -7,7 +7,6 @@
 
 import SwiftUI
 import SwiftData
-import Security
 
 struct RegistrationView: View {
     // подключаемся к базе SwiftData через context
@@ -37,7 +36,7 @@ struct RegistrationView: View {
                         .disableAutocorrection(true)
                         .frame(width: geometry.size.width - 40, height: 50)
                     CustomSecureField(password: $password, title: "Пароль")
-                    CustomSecureField(password: $passwordConfirmation, title: "Пароль")
+                    CustomSecureField(password: $passwordConfirmation, title: "Подтверждение пароля")
                 }
                 Button("Зарегистрироваться") {
                     if password.isEmpty {

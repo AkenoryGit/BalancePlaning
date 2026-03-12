@@ -22,8 +22,6 @@ class CategoryService {
         }
         let newCategory = Category(id: UUID(), userId: uuidString, name: categoryName, type: type)
         
-        print("Контекст в AddCategorySheet: \(ObjectIdentifier(context))")
-        
         context.insert(newCategory)
         
         do {

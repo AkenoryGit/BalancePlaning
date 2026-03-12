@@ -36,7 +36,7 @@ struct ContentView: View {
                     }
                 // в остальных случаях показываем окно профиля
             } else {
-                ProfileView(headView: Header(title: "Профиль"), isLogged: $isLoggedIn, accountsView: AccountsView())
+                ProfileView(isLogged: $isLoggedIn)
                     .tabItem {
                         Label("Профиль", systemImage: "person.crop.square")
                     }
@@ -48,10 +48,6 @@ struct ContentView: View {
         }
         .onAppear {
             isLoggedIn = userService.getCurrentUser() != nil
-        }
-        .onChange(of: context) {
-            isLoggedIn = userService.getCurrentUser() != nil
-            
         }
     }
 }

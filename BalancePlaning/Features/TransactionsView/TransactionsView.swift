@@ -14,7 +14,6 @@ struct TransactionsView: View {
     @State private var isPresented: Bool = false
     @State private var showDatePicker: Bool = false
     @State private var showAllTransactions: Bool = false
-    @State private var isSelected: Bool = false
     @State private var selectedTransacion: Transaction?
     
     @Query private var allTransactions: [Transaction]

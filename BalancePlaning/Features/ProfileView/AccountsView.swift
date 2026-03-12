@@ -12,8 +12,7 @@ struct AccountsView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Account.name) private var allAccounts: [Account]
     
-    @State var selectedAccount: Account?
-    @State private var date: Date = Date.now
+    @State private var selectedAccount: Account?
 
     private var accountService: AccountService {
         AccountService(context: context)
