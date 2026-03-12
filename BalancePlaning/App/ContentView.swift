@@ -10,39 +10,39 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var context
-    // Отслеживаем какое вью выбрать, с регистрацией или авторизацией
     @State private var isRegistration: Bool = false
-    // смотрим, пользователь авторизовался или нет
     @State private var isLoggedIn: Bool = false
-    
+
     var userService: UserService {
         UserService(context: context)
     }
-    
+
     var body: some View {
-        
         TabView {
-            // если не на окне регистрации и не залогинен, то показываем окно авторизации
             if !isRegistration && !isLoggedIn {
                 AutorizationView(isRegistration: $isRegistration, isLogged: $isLoggedIn)
                     .tabItem {
-                        Label("Авторизация", systemImage: "person.crop.square")
+                        Label("Вход", systemImage: "person.crop.square")
                     }
-                //если еще не залогинен и выбрана регистрация, то показываем окно регистрации
             } else if !isLoggedIn && isRegistration {
                 RegistrationView(isRegistration: $isRegistration, isLogin: $isLoggedIn)
                     .tabItem {
                         Label("Регистрация", systemImage: "person.crop.square")
                     }
-                // в остальных случаях показываем окно профиля
             } else {
-                ProfileView(headView: Header(title: "Профиль"), isLogged: $isLoggedIn, accountsView: AccountsView())
-                    .tabItem {
-                        Label("Профиль", systemImage: "person.crop.square")
-                    }
                 TransactionsView()
                     .tabItem {
-                        Label("Транзакции", systemImage: "book")
+                        Label("Главная", systemImage: "house.fill")
+                    }
+
+                AnalyticsView()
+                    .tabItem {
+                        Label("Аналитика", systemImage: "chart.bar.fill")
+                    }
+
+                ProfileView(isLogged: $isLoggedIn)
+                    .tabItem {
+                        Label("Профиль", systemImage: "person.fill")
                     }
             }
         }
@@ -51,11 +51,6 @@ struct ContentView: View {
         }
         .onChange(of: context) {
             isLoggedIn = userService.getCurrentUser() != nil
-            
         }
     }
 }
-
-//#Preview {
-//    ContentView()
-//}

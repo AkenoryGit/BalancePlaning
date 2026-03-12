@@ -8,7 +8,7 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - Выбор типа операции
+// MARK: - Выбор типа операции (Bottom Sheet)
 
 struct TransactionsCategoryView: View {
     @Environment(\.modelContext) private var context
@@ -25,16 +25,51 @@ struct TransactionsCategoryView: View {
     }
 
     var body: some View {
-        VStack {
-            Button("Создать перевод") { isTransactionPresented = true }
-                .buttonStyle(.borderedProminent).frame(maxWidth: .infinity).padding(.horizontal)
-            Button("Создать расход") { isExpensePresented = true }
-                .buttonStyle(.borderedProminent).frame(maxWidth: .infinity).padding(.horizontal)
-            Button("Создать пополнение") { isIncomePresented = true }
-                .buttonStyle(.borderedProminent).frame(maxWidth: .infinity).padding(.horizontal)
-            Button("Отмена", role: .destructive) { dismiss() }
-                .buttonStyle(.borderedProminent).frame(maxWidth: .infinity).padding(.horizontal)
+        VStack(spacing: 0) {
+            // Drag indicator
+            Capsule()
+                .fill(Color.secondary.opacity(0.4))
+                .frame(width: 40, height: 4)
+                .padding(.top, 12)
+
+            Text("Новая операция")
+                .font(.title2.bold())
+                .padding(.top, 16)
+                .padding(.bottom, 20)
+
+            // Карточки типов
+            VStack(spacing: 12) {
+                TransactionTypeCard(
+                    color: AppTheme.Colors.transfer,
+                    icon: "arrow.left.arrow.right.circle.fill",
+                    title: "Перевод",
+                    subtitle: "Между вашими счетами"
+                ) { isTransactionPresented = true }
+
+                TransactionTypeCard(
+                    color: AppTheme.Colors.expense,
+                    icon: "minus.circle.fill",
+                    title: "Расход",
+                    subtitle: "Оплата, покупки, траты"
+                ) { isExpensePresented = true }
+
+                TransactionTypeCard(
+                    color: AppTheme.Colors.income,
+                    icon: "plus.circle.fill",
+                    title: "Пополнение",
+                    subtitle: "Доход, возврат средств"
+                ) { isIncomePresented = true }
+            }
+            .padding(.horizontal)
+
+            Button("Отмена") { dismiss() }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.top, 20)
+                .padding(.bottom, 24)
         }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.hidden)
         .sheet(isPresented: $isTransactionPresented) {
             AddTransactionView(isRootPresented: $isRootPresented, transactionService: transactionService)
         }
@@ -43,6 +78,46 @@ struct TransactionsCategoryView: View {
         }
         .sheet(isPresented: $isIncomePresented) {
             AddIncomeView(isRootPresented: $isRootPresented, transactionService: transactionService)
+        }
+    }
+}
+
+// MARK: - Карточка типа операции
+
+struct TransactionTypeCard: View {
+    let color: Color
+    let icon: String
+    let title: String
+    let subtitle: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 16) {
+                Image(systemName: icon)
+                    .font(.title2)
+                    .foregroundStyle(color)
+                    .frame(width: 50, height: 50)
+                    .background(color.opacity(0.12))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(16)
+            .cardStyle()
         }
     }
 }
