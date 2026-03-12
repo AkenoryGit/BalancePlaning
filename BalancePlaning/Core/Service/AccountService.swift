@@ -8,7 +8,7 @@
 import Foundation
 import SwiftData
 
-struct AccountService {
+class AccountService {
     
     private let context: ModelContext
     

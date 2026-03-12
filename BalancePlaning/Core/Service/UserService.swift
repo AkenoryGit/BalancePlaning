@@ -13,20 +13,22 @@ enum UserDefaultKeys {
     static let currentUserId = "currentUserId"
 }
 
-struct UserService {
+class UserService {
     private let context: ModelContext
-
+    
     init(context: ModelContext) {
         self.context = context
     }
-
+    
     // узнаем текущего пользователя по сохраненному id пользователя в UserDefaults
     func getCurrentUser() -> User? {
-        guard let userId = currentUserId() else {
+        // вытаскиваем id текущего пользователя в формате String
+        guard let uuidString = currentUserId() else {
             return nil
         }
-
-        let fetch = FetchDescriptor<User>(predicate: #Predicate { $0.id == userId })
+        
+        // ищем в SwiftData пользователей с таким же id
+        let fetch = FetchDescriptor<User>(predicate: #Predicate { $0.id == uuidString })
         
         // пытаемся вернуть первого найденного в базе пользователя с таким id
         do {

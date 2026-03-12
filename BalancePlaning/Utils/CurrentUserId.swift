@@ -5,7 +5,7 @@
 //  Created by Дмитрий Дудник on 27.02.2026.
 //
 
-import Foundation
+import SwiftUI
 
 func currentUserId() -> UUID? {
     guard let uuidString = UserDefaults.standard.string(forKey: UserDefaultKeys.currentUserId) else {
