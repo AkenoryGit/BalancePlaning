@@ -13,7 +13,6 @@ struct ProfileView: View {
     @State private var showAddAccountSheet: Bool = false
     @State private var showAddCategorySheet: Bool = false
     @State private var accountName: String = ""
-    @State private var categoryName: String = ""
     @State private var startBalance: String = ""
     @State private var type: CategoryType = .expense
 
@@ -71,7 +70,6 @@ struct ProfileView: View {
                     VStack(spacing: 8) {
                         ProfileSectionHeader(title: "Категории доходов") {
                             showAddCategorySheet = true
-                            categoryName = ""
                             type = .income
                         }
                         CategoriesView(isIncome: true)
@@ -81,7 +79,6 @@ struct ProfileView: View {
                     VStack(spacing: 8) {
                         ProfileSectionHeader(title: "Категории расходов") {
                             showAddCategorySheet = true
-                            categoryName = ""
                             type = .expense
                         }
                         CategoriesView(isIncome: false)
@@ -114,7 +111,7 @@ struct ProfileView: View {
             AddAccountSheet(accountName: $accountName, startBalance: $startBalance)
         }
         .sheet(isPresented: $showAddCategorySheet) {
-            AddCategorySheet(categoryName: $categoryName, type: $type)
+            AddCategorySheet(type: $type)
         }
     }
 }

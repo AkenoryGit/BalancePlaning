@@ -14,19 +14,35 @@ class Category {
     var userId: UUID
     var name: String
     var type: CategoryType
-    
-    init(id: UUID = UUID(), userId: UUID, name: String, type: CategoryType) {
-            self.id = id
-            self.userId = userId
-            self.name = name
-            self.type = type
-        }
+    /// nil = корневая категория; UUID = подкатегория (глубина max 1)
+    var parentId: UUID? = nil
+    /// Системная категория «Неизвестно» — нельзя удалить
+    var isDefault: Bool = false
+
+    init(
+        id: UUID = UUID(),
+        userId: UUID,
+        name: String,
+        type: CategoryType,
+        parentId: UUID? = nil,
+        isDefault: Bool = false
+    ) {
+        self.id = id
+        self.userId = userId
+        self.name = name
+        self.type = type
+        self.parentId = parentId
+        self.isDefault = isDefault
+    }
+
+    /// true, если категория является корневой (не подкатегория)
+    var isRoot: Bool { parentId == nil }
 }
 
 enum CategoryType: String, Codable {
     case income = "income"
     case expense = "expense"
-    
+
     var displayName: String {
         switch self {
         case .income: return "Доход"

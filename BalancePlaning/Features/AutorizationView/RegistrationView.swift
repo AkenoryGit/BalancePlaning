@@ -7,93 +7,113 @@
 
 import SwiftUI
 import SwiftData
-import Security
 
 struct RegistrationView: View {
-    // подключаемся к базе SwiftData через context
-    @Environment(\.modelContext) var modelContext
-    
+    @Environment(\.modelContext) private var modelContext
+
     @Binding var isRegistration: Bool
     @Binding var isLogin: Bool
-    
-    @State private var login: String = ""
-    @State private var password: String = ""
-    @State private var passwordConfirmation: String = ""
-    @State private var status: String = ""
-    
-    // вытаскиваем из базы всех зарегистрированных поользователей
+
     @Query(filter: #Predicate<User> { _ in true }) private var allUsers: [User]
-    
+
+    @State private var email: String = ""
+    @State private var password: String = ""
+    @State private var passwordConfirm: String = ""
+    @State private var errorMessage: String = ""
+
     var body: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 20) {
-                Header(title: "Регистрация")
-                    .frame(width: geometry.size.width, height: 250)
-                VStack(spacing: 0) {
-                    TextField("Логин", text: $login)
-                        .textFieldStyle(.roundedBorder)
-                        .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
-                        .frame(width: geometry.size.width - 40, height: 50)
-                    CustomSecureField(password: $password, title: "Пароль")
-                    CustomSecureField(password: $passwordConfirmation, title: "Пароль")
+        ZStack(alignment: .bottom) {
+            // Градиентный фон на весь экран
+            LinearGradient(
+                colors: [AppTheme.Colors.accent, AppTheme.Colors.accentSecondary],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            // Герой-секция
+            AuthHeroView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding(.top, 100)
+
+            // Белая панель с формой
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Создать аккаунт")
+                        .font(.title2.bold())
+                    Text("Начните вести учёт финансов")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                Button("Зарегистрироваться") {
-                    if password.isEmpty {
-                        status = "Пароль пустой"
-                    } else if password != passwordConfirmation {
-                        status = "Пароли не совпадают"
-                    } else if password.count < 8 {
-                        status = "Пароль должен быть не менее 8 символов"
-                    } else if login.isEmpty  {
-                        status = "Логин пустой"
-                    } else if allUsers.contains(where: { $0.login == login }) {
-                        status = "Пользователь с таким аккаунтом уже существует"
-                    } else if !login.isValidEmail {
-                            status = "Неверный формат email"
-                    } else {
-                        do {
-                            try register(login: login, password: password)
-                                status = "Вы успешно зарегистрировались!"
-                                isLogin = true
-                            } catch KeychainError.duplicateItem {
-                                status = "Пользователь с таким аккаунтом уже существует"
-                            } catch KeychainError.unowned(let statusError) {
-                                status = "Ошибка \(statusError)"
-                            } catch {
-                                status = "Неизвестная ошибка"
-                            }
+
+                VStack(spacing: 10) {
+                    AuthTextField(
+                        icon: "envelope",
+                        placeholder: "Email",
+                        text: $email,
+                        keyboardType: .emailAddress
+                    )
+                    AuthSecureField(
+                        icon: "lock",
+                        placeholder: "Пароль",
+                        text: $password
+                    )
+                    AuthSecureField(
+                        icon: "lock.shield",
+                        placeholder: "Подтвердите пароль",
+                        text: $passwordConfirm
+                    )
+                }
+
+                AuthErrorLabel(message: errorMessage)
+
+                AuthPrimaryButton(title: "Создать аккаунт", action: attemptRegister)
+
+                HStack(spacing: 4) {
+                    Text("Уже есть аккаунт?")
+                        .foregroundStyle(.secondary)
+                    Button("Войти") {
+                        isRegistration = false
                     }
+                    .foregroundStyle(AppTheme.Colors.accent)
+                    .fontWeight(.medium)
                 }
-                Button("Уже зарегистрированы?") {
-                    isRegistration = false
-                }
-                Text(status)
-                    .foregroundStyle(Color.red)
+                .font(.subheadline)
+                .frame(maxWidth: .infinity, alignment: .center)
             }
+            .padding(.horizontal, 24)
+            .padding(.top, 32)
+            .padding(.bottom, 48)
+            .background(
+                RoundedRectangle(cornerRadius: 32)
+                    .fill(Color(.systemBackground))
+                    .ignoresSafeArea(edges: .bottom)
+            )
+            .animation(.easeInOut(duration: 0.2), value: errorMessage)
+        }
+    }
+
+    private func attemptRegister() {
+        withAnimation { errorMessage = "" }
+        guard !email.isEmpty else { withAnimation { errorMessage = "Введите email" }; return }
+        guard email.isValidEmail else { withAnimation { errorMessage = "Неверный формат email" }; return }
+        guard !password.isEmpty else { withAnimation { errorMessage = "Введите пароль" }; return }
+        guard password.count >= 8 else { withAnimation { errorMessage = "Пароль минимум 8 символов" }; return }
+        guard password == passwordConfirm else { withAnimation { errorMessage = "Пароли не совпадают" }; return }
+        guard !allUsers.contains(where: { $0.login == email }) else {
+            withAnimation { errorMessage = "Такой аккаунт уже существует" }; return
+        }
+        do {
+            let newUser = User(login: email)
+            modelContext.insert(newUser)
+            try modelContext.save()
+            try KeychainManager.save(password: password, id: newUser.id)
+            UserDefaults.standard.set(newUser.id.uuidString, forKey: UserDefaultKeys.currentUserId)
+            isLogin = true
+        } catch KeychainError.duplicateItem {
+            withAnimation { errorMessage = "Такой аккаунт уже существует" }
+        } catch {
+            withAnimation { errorMessage = "Ошибка: \(error.localizedDescription)" }
         }
     }
 }
-
-extension RegistrationView {
-    // функция регистрации
-    private func register(login: String, password: String) throws {
-        // создаем нового пользователя в введенным логином
-        let newUser = User(login: login)
-        // вставляем нового пользователя в SwiftData
-        modelContext.insert(newUser)
-        // пробуем сохранить изменения в SwiftData
-        try modelContext.save()
-        
-        // пробуем сохранить пароль в Keychain и привязать его к id нового пользователя
-        try KeychainManager.save(password: password, id: newUser.id)
-        // сохраняем id нового пользователя в UserDefaults
-        UserDefaults.standard.set(newUser.id.uuidString, forKey: UserDefaultKeys.currentUserId)
-
-    }
-}
-
-//#Preview {
-//    RegistrationView(isRegistration: .constant(true), isLogin: .constant(false))
-//}

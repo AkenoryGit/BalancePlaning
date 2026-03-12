@@ -30,9 +30,13 @@ struct TransactionsView: View {
     }
 
     private var shownTransactions: [Transaction] {
-        showAllTransactions
-            ? userTransactions.sorted { $0.date > $1.date }
-            : dailyTransactions
+        let base = showAllTransactions ? userTransactions : dailyTransactions
+        return base.sorted {
+            if $0.priority.sortOrder != $1.priority.sortOrder {
+                return $0.priority.sortOrder < $1.priority.sortOrder
+            }
+            return $0.date > $1.date
+        }
     }
 
     private var dailyIncome: Decimal {
@@ -235,52 +239,64 @@ struct TransactionCard: View {
     }
 
     var body: some View {
-        HStack(spacing: 14) {
-            // Иконка типа
-            Image(systemName: transaction.type.icon)
-                .font(.title3)
-                .foregroundStyle(transaction.type.color)
-                .frame(width: 44, height: 44)
-                .background(transaction.type.color.opacity(0.12))
-                .clipShape(Circle())
-
-            // Название и счёт
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline.bold())
-                    .foregroundStyle(.primary)
-                if !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Spacer()
-
-            // Сумма и время
-            VStack(alignment: .trailing, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 1) {
-                    if !transaction.type.amountPrefix.isEmpty {
-                        Text(transaction.type.amountPrefix)
-                            .font(.subheadline.bold())
-                    }
-                    Text(transaction.amount, format: .number.precision(.fractionLength(0...2)))
-                        .font(.subheadline.bold())
-                    Text("₽")
-                        .font(.caption.bold())
-                }
-                .foregroundStyle(transaction.type.color)
-
-                Text(transaction.date, format: .dateTime
-                    .hour(.defaultDigits(amPM: .omitted))
-                    .minute()
+        HStack(spacing: 0) {
+            // Цветная полоска приоритета
+            transaction.priority.stripeColor
+                .frame(width: 4)
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: AppTheme.cardRadius,
+                        bottomLeadingRadius: AppTheme.cardRadius
+                    )
                 )
-                .font(.caption)
-                .foregroundStyle(.secondary)
+
+            HStack(spacing: 14) {
+                // Иконка типа
+                Image(systemName: transaction.type.icon)
+                    .font(.title3)
+                    .foregroundStyle(transaction.type.color)
+                    .frame(width: 44, height: 44)
+                    .background(transaction.type.color.opacity(0.12))
+                    .clipShape(Circle())
+
+                // Название и счёт
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.primary)
+                    if !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                // Сумма и время
+                VStack(alignment: .trailing, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 1) {
+                        if !transaction.type.amountPrefix.isEmpty {
+                            Text(transaction.type.amountPrefix)
+                                .font(.subheadline.bold())
+                        }
+                        Text(transaction.amount, format: .number.precision(.fractionLength(0...2)))
+                            .font(.subheadline.bold())
+                        Text("₽")
+                            .font(.caption.bold())
+                    }
+                    .foregroundStyle(transaction.type.color)
+
+                    Text(transaction.date, format: .dateTime
+                        .hour(.defaultDigits(amPM: .omitted))
+                        .minute()
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
             }
+            .padding(14)
         }
-        .padding(14)
         .cardStyle()
     }
 }

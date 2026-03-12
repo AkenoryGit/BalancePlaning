@@ -78,6 +78,19 @@ extension TransactionType {
     }
 }
 
+// MARK: - TransactionPriority: цвет полоски
+
+extension TransactionPriority {
+    /// Цвет левой полоски на карточке. Для .normal — прозрачный (не отображается)
+    var stripeColor: Color {
+        switch self {
+        case .mandatory: return AppTheme.Colors.expense
+        case .important: return Color(hex: "F59E0B")
+        case .normal:    return Color.clear
+        }
+    }
+}
+
 // MARK: - cardStyle()
 
 struct CardModifier: ViewModifier {

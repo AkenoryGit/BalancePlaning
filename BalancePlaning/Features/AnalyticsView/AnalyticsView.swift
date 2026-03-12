@@ -64,10 +64,21 @@ struct AnalyticsView: View {
             if t.type == .income  { incomeByDay[day, default: 0]  += amount }
             if t.type == .expense { expenseByDay[day, default: 0] += amount }
         }
+        let monthComponents = cal.dateComponents([.year, .month], from: selectedMonth)
         var result: [DayAmount] = []
-        for (day, amount) in incomeByDay  { result.append(DayAmount(day: day, amount: amount, kind: "Доходы"))  }
-        for (day, amount) in expenseByDay { result.append(DayAmount(day: day, amount: amount, kind: "Расходы")) }
-        return result.sorted { $0.day < $1.day }
+        for (day, amount) in incomeByDay {
+            var dc = monthComponents; dc.day = day
+            if let date = cal.date(from: dc) {
+                result.append(DayAmount(date: date, amount: amount, kind: "Доходы"))
+            }
+        }
+        for (day, amount) in expenseByDay {
+            var dc = monthComponents; dc.day = day
+            if let date = cal.date(from: dc) {
+                result.append(DayAmount(date: date, amount: amount, kind: "Расходы"))
+            }
+        }
+        return result.sorted { $0.date < $1.date }
     }
 
     var body: some View {
@@ -114,7 +125,7 @@ struct AnalyticsView: View {
 
                             Chart(dailyChartData) { item in
                                 BarMark(
-                                    x: .value("День", item.day),
+                                    x: .value("День", item.date, unit: .day),
                                     y: .value("Сумма", item.amount)
                                 )
                                 .foregroundStyle(by: .value("Тип", item.kind))
@@ -125,7 +136,10 @@ struct AnalyticsView: View {
                                 "Расходы": AppTheme.Colors.expense
                             ])
                             .chartXAxis {
-                                AxisMarks(values: .automatic(desiredCount: 6))
+                                AxisMarks(values: .automatic(desiredCount: 6)) {
+                                    AxisValueLabel(format: .dateTime.day())
+                                    AxisGridLine()
+                                }
                             }
                             .chartLegend(position: .top, alignment: .leading)
                             .frame(height: 180)
@@ -227,7 +241,7 @@ struct AnalyticsView: View {
 
 struct DayAmount: Identifiable {
     let id = UUID()
-    let day: Int
+    let date: Date
     let amount: Double
     let kind: String
 }

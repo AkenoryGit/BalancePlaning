@@ -172,6 +172,7 @@ struct AddTransactionView: View {
     @State var recurringOperation: Bool = false
     @State var interval: RecurringInterval? = .monthly
     @State var intervalDays: String = "2"
+    @State var priority: TransactionPriority = .normal
 
     var editingTransaction: Transaction? = nil
     // передаёт действие с БД наверх — родитель выполнит его после того как полностью исчезнет
@@ -220,6 +221,12 @@ struct AddTransactionView: View {
                         DatePicker("Выберите дату", selection: $date, displayedComponents: [.date])
                             .datePickerStyle(.graphical).padding()
                     }
+                    Picker("Важность", selection: $priority) {
+                        ForEach(TransactionPriority.allCases, id: \.self) { p in
+                            Text(p.displayName).tag(p)
+                        }
+                    }
+                    .pickerStyle(.segmented).padding(.horizontal)
                     Button(editingTransaction == nil ? "Добавить" : "Сохранить") {
                         guard let from = fromAccount, let to = toAccount,
                               let amountDecimal = Decimal(string: amount), amountDecimal > 0 else {
@@ -232,21 +239,21 @@ struct AddTransactionView: View {
                             let capturedDate = date; let capturedEndDate = endDate
                             let capturedInterval = interval; let capturedIntervalDays = Int(intervalDays)
                             let capturedRecurring = recurringOperation; let capturedAmount = amountDecimal
-                            let service = transactionService
+                            let capturedPriority = priority; let service = transactionService
                             onSaved {
                                 service.deleteTransaction(editing)
                                 if !capturedRecurring {
-                                    service.addTransactions(from: from, to: to, amount: capturedAmount, startDate: capturedDate)
+                                    service.addTransactions(from: from, to: to, amount: capturedAmount, startDate: capturedDate, priority: capturedPriority)
                                 } else {
-                                    service.addTransactions(from: from, to: to, amount: capturedAmount, startDate: capturedDate, endDate: capturedEndDate, interval: capturedInterval, intervalDays: capturedIntervalDays)
+                                    service.addTransactions(from: from, to: to, amount: capturedAmount, startDate: capturedDate, endDate: capturedEndDate, interval: capturedInterval, intervalDays: capturedIntervalDays, priority: capturedPriority)
                                 }
                             }
                             isRootPresented = false; dismiss()
                         } else {
                             if !recurringOperation {
-                                transactionService.addTransactions(from: from, to: to, amount: amountDecimal, startDate: date)
+                                transactionService.addTransactions(from: from, to: to, amount: amountDecimal, startDate: date, priority: priority)
                             } else {
-                                transactionService.addTransactions(from: from, to: to, amount: amountDecimal, startDate: date, endDate: endDate, interval: interval, intervalDays: Int(intervalDays))
+                                transactionService.addTransactions(from: from, to: to, amount: amountDecimal, startDate: date, endDate: endDate, interval: interval, intervalDays: Int(intervalDays), priority: priority)
                             }
                             isRootPresented = false; dismiss()
                         }
@@ -256,10 +263,10 @@ struct AddTransactionView: View {
                             guard let from = pendingFrom, let to = pendingTo,
                                   let editing = editingTransaction else { return }
                             let capturedDate = date; let capturedAmount = pendingAmount
-                            let service = transactionService
+                            let capturedPriority = priority; let service = transactionService
                             onSaved {
                                 service.deleteTransaction(editing)
-                                service.addTransactions(from: from, to: to, amount: capturedAmount, startDate: capturedDate)
+                                service.addTransactions(from: from, to: to, amount: capturedAmount, startDate: capturedDate, priority: capturedPriority)
                             }
                             isRootPresented = false; dismiss()
                         }
@@ -270,13 +277,14 @@ struct AddTransactionView: View {
                             let capturedDate = date; let capturedEndDate = endDate
                             let capturedInterval = interval; let capturedIntervalDays = Int(intervalDays)
                             let capturedRecurring = recurringOperation; let capturedAmount = pendingAmount
-                            let capturedEditingDate = editing.date; let service = transactionService
+                            let capturedEditingDate = editing.date; let capturedPriority = priority
+                            let service = transactionService
                             onSaved {
                                 service.deleteFollowingTransactions(groupId: groupId, from: capturedEditingDate)
                                 if !capturedRecurring {
-                                    service.addTransactions(from: from, to: to, amount: capturedAmount, startDate: capturedDate)
+                                    service.addTransactions(from: from, to: to, amount: capturedAmount, startDate: capturedDate, priority: capturedPriority)
                                 } else {
-                                    service.addTransactions(from: from, to: to, amount: capturedAmount, startDate: capturedDate, endDate: capturedEndDate, interval: capturedInterval, intervalDays: capturedIntervalDays)
+                                    service.addTransactions(from: from, to: to, amount: capturedAmount, startDate: capturedDate, endDate: capturedEndDate, interval: capturedInterval, intervalDays: capturedIntervalDays, priority: capturedPriority)
                                 }
                             }
                             isRootPresented = false; dismiss()
@@ -310,6 +318,7 @@ struct AddExpenseView: View {
     @State var recurringOperation: Bool = false
     @State var interval: RecurringInterval? = .monthly
     @State var intervalDays: String = "2"
+    @State var priority: TransactionPriority = .normal
 
     var editingTransaction: Transaction? = nil
     var onSaved: (@escaping () -> Void) -> Void = { _ in }
@@ -326,7 +335,24 @@ struct AddExpenseView: View {
     }
     private var expenseCategories: [Category] {
         guard let userId = currentUserId() else { return [] }
-        return allCategories.filter { $0.userId == userId && $0.type == .expense }
+        let all = allCategories.filter { $0.userId == userId && $0.type == .expense }
+        return flattenedTree(all)
+    }
+
+    /// Возвращает плоский список категорий в порядке дерева (корень, затем дети с отступом)
+    private func flattenedTree(_ cats: [Category]) -> [Category] {
+        let roots = cats.filter { $0.isRoot }.sorted { $0.name < $1.name }
+        var result: [Category] = []
+        for root in roots {
+            result.append(root)
+            let children = cats.filter { $0.parentId == root.id }.sorted { $0.name < $1.name }
+            result.append(contentsOf: children)
+        }
+        return result
+    }
+
+    private func categoryLabel(_ category: Category, allCats: [Category]) -> String {
+        category.parentId != nil ? "    ↳ \(category.name)" : category.name
     }
 
     var transactionService: TransactionService
@@ -347,7 +373,7 @@ struct AddExpenseView: View {
                     Picker("Категория расхода", selection: $toCategory) {
                         Text("Не выбрано").tag(Optional<Category>.none)
                         ForEach(expenseCategories) { category in
-                            Text(category.name).tag(Optional(category))
+                            Text(categoryLabel(category, allCats: allCategories)).tag(Optional(category))
                         }
                     }
                     .pickerStyle(.navigationLink)
@@ -360,6 +386,12 @@ struct AddExpenseView: View {
                         DatePicker("Выберите дату", selection: $date, displayedComponents: [.date])
                             .datePickerStyle(.graphical).padding()
                     }
+                    Picker("Важность", selection: $priority) {
+                        ForEach(TransactionPriority.allCases, id: \.self) { p in
+                            Text(p.displayName).tag(p)
+                        }
+                    }
+                    .pickerStyle(.segmented).padding(.horizontal)
                     Button(editingTransaction == nil ? "Добавить" : "Сохранить") {
                         guard let from = fromAccount, let to = toCategory,
                               let amountDecimal = Decimal(string: amount), amountDecimal > 0 else {
@@ -372,21 +404,21 @@ struct AddExpenseView: View {
                             let capturedDate = date; let capturedEndDate = endDate
                             let capturedInterval = interval; let capturedIntervalDays = Int(intervalDays)
                             let capturedRecurring = recurringOperation; let capturedAmount = amountDecimal
-                            let service = transactionService
+                            let capturedPriority = priority; let service = transactionService
                             onSaved {
                                 service.deleteTransaction(editing)
                                 if !capturedRecurring {
-                                    service.addExpense(from: from, to: to, amount: capturedAmount, startDate: capturedDate)
+                                    service.addExpense(from: from, to: to, amount: capturedAmount, startDate: capturedDate, priority: capturedPriority)
                                 } else {
-                                    service.addExpense(from: from, to: to, amount: capturedAmount, startDate: capturedDate, endDate: capturedEndDate, interval: capturedInterval, intervalDays: capturedIntervalDays)
+                                    service.addExpense(from: from, to: to, amount: capturedAmount, startDate: capturedDate, endDate: capturedEndDate, interval: capturedInterval, intervalDays: capturedIntervalDays, priority: capturedPriority)
                                 }
                             }
                             isRootPresented = false; dismiss()
                         } else {
                             if !recurringOperation {
-                                transactionService.addExpense(from: from, to: to, amount: amountDecimal, startDate: date)
+                                transactionService.addExpense(from: from, to: to, amount: amountDecimal, startDate: date, priority: priority)
                             } else {
-                                transactionService.addExpense(from: from, to: to, amount: amountDecimal, startDate: date, endDate: endDate, interval: interval, intervalDays: Int(intervalDays))
+                                transactionService.addExpense(from: from, to: to, amount: amountDecimal, startDate: date, endDate: endDate, interval: interval, intervalDays: Int(intervalDays), priority: priority)
                             }
                             isRootPresented = false; dismiss()
                         }
@@ -396,10 +428,10 @@ struct AddExpenseView: View {
                             guard let from = pendingFrom, let to = pendingTo,
                                   let editing = editingTransaction else { return }
                             let capturedDate = date; let capturedAmount = pendingAmount
-                            let service = transactionService
+                            let capturedPriority = priority; let service = transactionService
                             onSaved {
                                 service.deleteTransaction(editing)
-                                service.addExpense(from: from, to: to, amount: capturedAmount, startDate: capturedDate)
+                                service.addExpense(from: from, to: to, amount: capturedAmount, startDate: capturedDate, priority: capturedPriority)
                             }
                             isRootPresented = false; dismiss()
                         }
@@ -410,13 +442,14 @@ struct AddExpenseView: View {
                             let capturedDate = date; let capturedEndDate = endDate
                             let capturedInterval = interval; let capturedIntervalDays = Int(intervalDays)
                             let capturedRecurring = recurringOperation; let capturedAmount = pendingAmount
-                            let capturedEditingDate = editing.date; let service = transactionService
+                            let capturedEditingDate = editing.date; let capturedPriority = priority
+                            let service = transactionService
                             onSaved {
                                 service.deleteFollowingTransactions(groupId: groupId, from: capturedEditingDate)
                                 if !capturedRecurring {
-                                    service.addExpense(from: from, to: to, amount: capturedAmount, startDate: capturedDate)
+                                    service.addExpense(from: from, to: to, amount: capturedAmount, startDate: capturedDate, priority: capturedPriority)
                                 } else {
-                                    service.addExpense(from: from, to: to, amount: capturedAmount, startDate: capturedDate, endDate: capturedEndDate, interval: capturedInterval, intervalDays: capturedIntervalDays)
+                                    service.addExpense(from: from, to: to, amount: capturedAmount, startDate: capturedDate, endDate: capturedEndDate, interval: capturedInterval, intervalDays: capturedIntervalDays, priority: capturedPriority)
                                 }
                             }
                             isRootPresented = false; dismiss()
@@ -450,6 +483,7 @@ struct AddIncomeView: View {
     @State var recurringOperation: Bool = false
     @State var interval: RecurringInterval? = .monthly
     @State var intervalDays: String = "2"
+    @State var priority: TransactionPriority = .normal
 
     var editingTransaction: Transaction? = nil
     var onSaved: (@escaping () -> Void) -> Void = { _ in }
@@ -466,7 +500,23 @@ struct AddIncomeView: View {
     }
     private var incomeCategories: [Category] {
         guard let userId = currentUserId() else { return [] }
-        return allCategories.filter { $0.userId == userId && $0.type == .income }
+        let all = allCategories.filter { $0.userId == userId && $0.type == .income }
+        return flattenedTree(all)
+    }
+
+    private func flattenedTree(_ cats: [Category]) -> [Category] {
+        let roots = cats.filter { $0.isRoot }.sorted { $0.name < $1.name }
+        var result: [Category] = []
+        for root in roots {
+            result.append(root)
+            let children = cats.filter { $0.parentId == root.id }.sorted { $0.name < $1.name }
+            result.append(contentsOf: children)
+        }
+        return result
+    }
+
+    private func categoryLabel(_ category: Category, allCats: [Category]) -> String {
+        category.parentId != nil ? "    ↳ \(category.name)" : category.name
     }
 
     var transactionService: TransactionService
@@ -479,7 +529,7 @@ struct AddIncomeView: View {
                     Picker("Категория поступления", selection: $fromCategory) {
                         Text("Не выбрано").tag(Optional<Category>.none)
                         ForEach(incomeCategories) { category in
-                            Text(category.name).tag(Optional(category))
+                            Text(categoryLabel(category, allCats: allCategories)).tag(Optional(category))
                         }
                     }
                     .pickerStyle(.navigationLink)
@@ -500,6 +550,12 @@ struct AddIncomeView: View {
                         DatePicker("Выберите дату", selection: $date, displayedComponents: [.date])
                             .datePickerStyle(.graphical).padding()
                     }
+                    Picker("Важность", selection: $priority) {
+                        ForEach(TransactionPriority.allCases, id: \.self) { p in
+                            Text(p.displayName).tag(p)
+                        }
+                    }
+                    .pickerStyle(.segmented).padding(.horizontal)
                     Button(editingTransaction == nil ? "Добавить" : "Сохранить") {
                         guard let from = fromCategory, let to = toAccount,
                               let amountDecimal = Decimal(string: amount), amountDecimal > 0 else {
@@ -512,21 +568,21 @@ struct AddIncomeView: View {
                             let capturedDate = date; let capturedEndDate = endDate
                             let capturedInterval = interval; let capturedIntervalDays = Int(intervalDays)
                             let capturedRecurring = recurringOperation; let capturedAmount = amountDecimal
-                            let service = transactionService
+                            let capturedPriority = priority; let service = transactionService
                             onSaved {
                                 service.deleteTransaction(editing)
                                 if !capturedRecurring {
-                                    service.addIncome(from: from, to: to, amount: capturedAmount, startDate: capturedDate)
+                                    service.addIncome(from: from, to: to, amount: capturedAmount, startDate: capturedDate, priority: capturedPriority)
                                 } else {
-                                    service.addIncome(from: from, to: to, amount: capturedAmount, startDate: capturedDate, endDate: capturedEndDate, interval: capturedInterval, intervalDays: capturedIntervalDays)
+                                    service.addIncome(from: from, to: to, amount: capturedAmount, startDate: capturedDate, endDate: capturedEndDate, interval: capturedInterval, intervalDays: capturedIntervalDays, priority: capturedPriority)
                                 }
                             }
                             isRootPresented = false; dismiss()
                         } else {
                             if !recurringOperation {
-                                transactionService.addIncome(from: from, to: to, amount: amountDecimal, startDate: date)
+                                transactionService.addIncome(from: from, to: to, amount: amountDecimal, startDate: date, priority: priority)
                             } else {
-                                transactionService.addIncome(from: from, to: to, amount: amountDecimal, startDate: date, endDate: endDate, interval: interval, intervalDays: Int(intervalDays))
+                                transactionService.addIncome(from: from, to: to, amount: amountDecimal, startDate: date, endDate: endDate, interval: interval, intervalDays: Int(intervalDays), priority: priority)
                             }
                             isRootPresented = false; dismiss()
                         }
@@ -536,10 +592,10 @@ struct AddIncomeView: View {
                             guard let from = pendingFrom, let to = pendingTo,
                                   let editing = editingTransaction else { return }
                             let capturedDate = date; let capturedAmount = pendingAmount
-                            let service = transactionService
+                            let capturedPriority = priority; let service = transactionService
                             onSaved {
                                 service.deleteTransaction(editing)
-                                service.addIncome(from: from, to: to, amount: capturedAmount, startDate: capturedDate)
+                                service.addIncome(from: from, to: to, amount: capturedAmount, startDate: capturedDate, priority: capturedPriority)
                             }
                             isRootPresented = false; dismiss()
                         }
@@ -550,13 +606,14 @@ struct AddIncomeView: View {
                             let capturedDate = date; let capturedEndDate = endDate
                             let capturedInterval = interval; let capturedIntervalDays = Int(intervalDays)
                             let capturedRecurring = recurringOperation; let capturedAmount = pendingAmount
-                            let capturedEditingDate = editing.date; let service = transactionService
+                            let capturedEditingDate = editing.date; let capturedPriority = priority
+                            let service = transactionService
                             onSaved {
                                 service.deleteFollowingTransactions(groupId: groupId, from: capturedEditingDate)
                                 if !capturedRecurring {
-                                    service.addIncome(from: from, to: to, amount: capturedAmount, startDate: capturedDate)
+                                    service.addIncome(from: from, to: to, amount: capturedAmount, startDate: capturedDate, priority: capturedPriority)
                                 } else {
-                                    service.addIncome(from: from, to: to, amount: capturedAmount, startDate: capturedDate, endDate: capturedEndDate, interval: capturedInterval, intervalDays: capturedIntervalDays)
+                                    service.addIncome(from: from, to: to, amount: capturedAmount, startDate: capturedDate, endDate: capturedEndDate, interval: capturedInterval, intervalDays: capturedIntervalDays, priority: capturedPriority)
                                 }
                             }
                             isRootPresented = false; dismiss()
@@ -593,6 +650,7 @@ struct EditTransactionView: View {
                 recurringOperation: transaction.recurringGroupId != nil,
                 interval: transaction.recurringInterval,
                 intervalDays: String(transaction.recurringIntervalDays ?? 2),
+                priority: transaction.priority,
                 editingTransaction: transaction,
                 onSaved: onSaved,
                 transactionService: transactionService
@@ -607,6 +665,7 @@ struct EditTransactionView: View {
                 recurringOperation: transaction.recurringGroupId != nil,
                 interval: transaction.recurringInterval,
                 intervalDays: String(transaction.recurringIntervalDays ?? 2),
+                priority: transaction.priority,
                 editingTransaction: transaction,
                 onSaved: onSaved,
                 transactionService: transactionService
@@ -621,6 +680,7 @@ struct EditTransactionView: View {
                 recurringOperation: transaction.recurringGroupId != nil,
                 interval: transaction.recurringInterval,
                 intervalDays: String(transaction.recurringIntervalDays ?? 2),
+                priority: transaction.priority,
                 editingTransaction: transaction,
                 onSaved: onSaved,
                 transactionService: transactionService

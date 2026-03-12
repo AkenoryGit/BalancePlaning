@@ -17,7 +17,8 @@ struct TransactionService {
     }
     
     func addTransactions(from: Account, to: Account, amount: Decimal, startDate: Date, endDate: Date? = nil,
-                         interval: RecurringInterval? = nil, intervalDays: Int? = nil) {
+                         interval: RecurringInterval? = nil, intervalDays: Int? = nil,
+                         priority: TransactionPriority = .normal) {
         guard let curUserID = currentUserId() else {
             print("Пользователь не найден")
             return
@@ -30,7 +31,8 @@ struct TransactionService {
                 userId: curUserID,
                 amount: amount,
                 date: startDate,
-                type: .transaction
+                type: .transaction,
+                priority: priority
             ))
         } else {
             guard let endDate = endDate, let interval = interval else {
@@ -47,6 +49,7 @@ struct TransactionService {
                     amount: amount,
                     date: day,
                     type: .transaction,
+                    priority: priority,
                     recurringGroupId: groupId,
                     recurringInterval: interval,
                     recurringIntervalDays: intervalDays
@@ -68,7 +71,8 @@ struct TransactionService {
     }
     
     func addExpense(from: Account, to: Category, amount: Decimal, startDate: Date, endDate: Date? = nil,
-                    interval: RecurringInterval? = nil, intervalDays: Int? = nil) {
+                    interval: RecurringInterval? = nil, intervalDays: Int? = nil,
+                    priority: TransactionPriority = .normal) {
         guard let curUserID = currentUserId() else {
             print("Пользователь не найден")
             return
@@ -76,13 +80,14 @@ struct TransactionService {
         var newExpense: [Transaction] = []
         if interval == nil {
             newExpense.append(Transaction(
-            fromAccount: from,
-            toCategory: to,
-            userId: curUserID,
-            amount: amount,
-            date: startDate,
-            type: .expense
-        ))
+                fromAccount: from,
+                toCategory: to,
+                userId: curUserID,
+                amount: amount,
+                date: startDate,
+                type: .expense,
+                priority: priority
+            ))
         } else {
             guard let endDate = endDate, let interval = interval else {
                 print("Не указана дата окончания для повторяющейся оплаты")
@@ -98,6 +103,7 @@ struct TransactionService {
                     amount: amount,
                     date: day,
                     type: .expense,
+                    priority: priority,
                     recurringGroupId: groupId,
                     recurringInterval: interval,
                     recurringIntervalDays: intervalDays
@@ -119,7 +125,8 @@ struct TransactionService {
     }
     
     func addIncome(from: Category, to: Account, amount: Decimal, startDate: Date, endDate: Date? = nil,
-                   interval: RecurringInterval? = nil, intervalDays: Int? = nil) {
+                   interval: RecurringInterval? = nil, intervalDays: Int? = nil,
+                   priority: TransactionPriority = .normal) {
         guard let curUserID = currentUserId() else {
             print("Пользователь не найден")
             return
@@ -132,7 +139,8 @@ struct TransactionService {
                 userId: curUserID,
                 amount: amount,
                 date: startDate,
-                type: .income
+                type: .income,
+                priority: priority
             ))
         } else {
             guard let endDate = endDate, let interval = interval else {
@@ -149,6 +157,7 @@ struct TransactionService {
                     amount: amount,
                     date: day,
                     type: .income,
+                    priority: priority,
                     recurringGroupId: groupId,
                     recurringInterval: interval,
                     recurringIntervalDays: intervalDays

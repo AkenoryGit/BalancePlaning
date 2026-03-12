@@ -10,39 +10,131 @@ import SwiftData
 
 class CategoryService {
     private let context: ModelContext
-    
+
     init(context: ModelContext) {
         self.context = context
     }
-    
+
+    // MARK: - Создание
+
+    /// Создаёт корневую категорию
     func addCategory(categoryName: String, type: CategoryType) {
-        guard let uuidString = currentUserId() else {
-            print("Нет текущего пользователя")
+        guard let userId = currentUserId() else {
+            print("Нет текущего пользователя"); return
+        }
+        let newCategory = Category(id: UUID(), userId: userId, name: categoryName, type: type)
+        context.insert(newCategory)
+        save("Категория \(categoryName) создана")
+    }
+
+    /// Создаёт подкатегорию (глубина max 1: parent должен быть корневым)
+    func addSubcategory(name: String, parent: Category) {
+        guard parent.isRoot else {
+            print("Нельзя создать подкатегорию у подкатегории (максимум 2 уровня)")
             return
         }
-        let newCategory = Category(id: UUID(), userId: uuidString, name: categoryName, type: type)
-        
-        print("Контекст в AddCategorySheet: \(ObjectIdentifier(context))")
-        
-        context.insert(newCategory)
-        
-        do {
-            try context.save()
-            print("Категория \(newCategory.name) была успешно создана!")
-        } catch {
-            print("Ошибка создания категории: \(error)")
-            context.delete(newCategory)
+        guard let userId = currentUserId() else {
+            print("Нет текущего пользователя"); return
         }
+        let sub = Category(id: UUID(), userId: userId, name: name, type: parent.type, parentId: parent.id)
+        context.insert(sub)
+        save("Подкатегория \(name) создана")
     }
-    
-    func deleteCategory(_ category: Category) {
-        context.delete(category)
-        
+
+    // MARK: - Вспомогательные
+
+    /// Прямые дети категории
+    func children(of category: Category, all: [Category]) -> [Category] {
+        all.filter { $0.parentId == category.id }
+    }
+
+    /// Все потомки (рекурсивно) — для каскадного удаления
+    func allDescendants(of category: Category, all: [Category]) -> [Category] {
+        let direct = children(of: category, all: all)
+        return direct + direct.flatMap { allDescendants(of: $0, all: all) }
+    }
+
+    /// Находит родителя категории
+    func parent(of category: Category, all: [Category]) -> Category? {
+        guard let parentId = category.parentId else { return nil }
+        return all.first { $0.id == parentId }
+    }
+
+    /// Находит или создаёт системную категорию «Неизвестно» для типа
+    @discardableResult
+    func getOrCreateDefaultCategory(type: CategoryType, all: [Category]) -> Category {
+        guard let userId = currentUserId() else {
+            fatalError("Нет текущего пользователя")
+        }
+        if let existing = all.first(where: { $0.userId == userId && $0.type == type && $0.isDefault }) {
+            return existing
+        }
+        let defaultCat = Category(id: UUID(), userId: userId, name: "Неизвестно", type: type, isDefault: true)
+        context.insert(defaultCat)
+        save("Создана дефолтная категория «Неизвестно» (\(type.displayName))")
+        return defaultCat
+    }
+
+    // MARK: - Удаление
+
+    /// Удаляет категорию и всё её поддерево.
+    /// - deleteTransactions: true → удалить связанные транзакции,
+    ///                        false → перенести их в категорию «Неизвестно»
+    func deleteCategory(
+        _ category: Category,
+        allCategories: [Category],
+        allTransactions: [Transaction],
+        deleteTransactions: Bool
+    ) {
+        guard !category.isDefault else {
+            print("Системную категорию «Неизвестно» нельзя удалить")
+            return
+        }
+
+        // Собираем всё поддерево (сама категория + потомки)
+        let descendants = allDescendants(of: category, all: allCategories)
+        let toDelete: [Category] = [category] + descendants
+        let toDeleteIds = Set(toDelete.map { $0.id })
+
+        // Обрабатываем транзакции
+        let affected = allTransactions.filter { t in
+            (t.fromCategory.map { toDeleteIds.contains($0.id) } ?? false) ||
+            (t.toCategory.map   { toDeleteIds.contains($0.id) } ?? false)
+        }
+
+        if deleteTransactions {
+            affected.forEach { context.delete($0) }
+        } else {
+            let defaultExpense = toDelete.contains(where: { $0.type == .expense })
+                ? getOrCreateDefaultCategory(type: .expense, all: allCategories)
+                : nil
+            let defaultIncome  = toDelete.contains(where: { $0.type == .income })
+                ? getOrCreateDefaultCategory(type: .income, all: allCategories)
+                : nil
+
+            for t in affected {
+                if let fc = t.fromCategory, toDeleteIds.contains(fc.id) {
+                    t.fromCategory = defaultIncome
+                }
+                if let tc = t.toCategory, toDeleteIds.contains(tc.id) {
+                    t.toCategory = defaultExpense
+                }
+            }
+        }
+
+        // Удаляем всё поддерево
+        toDelete.forEach { context.delete($0) }
+        save("Категория «\(category.name)» и её поддерево удалены")
+    }
+
+    // MARK: - Private
+
+    private func save(_ message: String = "") {
         do {
             try context.save()
-            print("Категория \(category) была успешно удалена!")
+            if !message.isEmpty { print(message) }
         } catch {
-            print("Ошибка удаления категории: \(error)")
+            print("Ошибка сохранения: \(error)")
         }
     }
 }

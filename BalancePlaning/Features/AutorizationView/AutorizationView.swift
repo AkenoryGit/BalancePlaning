@@ -9,111 +9,105 @@ import SwiftUI
 import SwiftData
 
 struct AutorizationView: View {
-    // передаем в ContentView регистрация сейчас или авторизация
     @Binding var isRegistration: Bool
-    // передаем в ContenView залогинился пользователь или нет
     @Binding var isLogged: Bool
-    
-    // выгружаем всех пользователей в переменную users
-    @Query(sort: \User.login) var users:[User] = []
-    
-    // следим за изменениями в переменных статус, логин и пароль
-    @State private var status: String = ""
-    @State private var login: String = ""
+
+    @Query(sort: \User.login) private var users: [User]
+
+    @State private var email: String = ""
     @State private var password: String = ""
-    
-    
+    @State private var errorMessage: String = ""
+
     var body: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 20) {
-                // устанавливаем хедер с титулом "Авторизация"
-                Header(title: "Авторизация")
-                    .frame(width: geometry.size.width, height: 250)
-                // Поля ввода для логина и пароля
-                VStack(spacing: 0) {
-                    TextField("Логин", text: $login)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: geometry.size.width - 40, height: 50)
-                        .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
-                    CustomSecureField(password: $password, title: "Пароль")
+        ZStack(alignment: .bottom) {
+            // Градиентный фон на весь экран
+            LinearGradient(
+                colors: [AppTheme.Colors.accent, AppTheme.Colors.accentSecondary],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            // Герой-секция: иконка + название
+            AuthHeroView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding(.top, 100)
+
+            // Белая панель с формой
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Добро пожаловать")
+                        .font(.title2.bold())
+                    Text("Войдите в свой аккаунт")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                // кнопка "Войти" с проверкой корректности ввода формата почты и проверки не пустое ли поле с почтой
-                Button {
-                    if !login.isValidEmail && !login.isEmpty {
-                        status = "Не верный формат почты"
-                    } else if password.count < 8 {
-                        status = "Пароль содержит менее 8 символов"
-                    } else {
-                        // если все корректно, то логинимся
-                        login(email: login, password: password)
+
+                VStack(spacing: 10) {
+                    AuthTextField(
+                        icon: "envelope",
+                        placeholder: "Email",
+                        text: $email,
+                        keyboardType: .emailAddress
+                    )
+                    AuthSecureField(
+                        icon: "lock",
+                        placeholder: "Пароль",
+                        text: $password
+                    )
+                }
+
+                AuthErrorLabel(message: errorMessage)
+
+                AuthPrimaryButton(title: "Войти", action: attemptLogin)
+
+                HStack(spacing: 4) {
+                    Text("Нет аккаунта?")
+                        .foregroundStyle(.secondary)
+                    Button("Зарегистрироваться") {
+                        isRegistration = true
                     }
-                } label: {
-                    Text("Войти")
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 20)
-                        .font(Font.system(size: 18, weight: .bold, design: .default))
-                        .background(RoundedRectangle(cornerRadius: 16).fill(Color.green))
-                        .foregroundColor(.white)
+                    .foregroundStyle(AppTheme.Colors.accent)
+                    .fontWeight(.medium)
                 }
-                // кнопка перехода на окно регистрации
-                Button {
-                    isRegistration = true
-                } label: {
-                    Text("Зарегистрироваться")
-                        .foregroundStyle(Color.blue)
-                }
-                // отображение статуса ввода логина и пароля
-                Text(status)
-                    .foregroundStyle(Color.red)
+                .font(.subheadline)
+                .frame(maxWidth: .infinity, alignment: .center)
             }
+            .padding(.horizontal, 24)
+            .padding(.top, 32)
+            .padding(.bottom, 48)
+            .background(
+                RoundedRectangle(cornerRadius: 32)
+                    .fill(Color(.systemBackground))
+                    .ignoresSafeArea(edges: .bottom)
+            )
+            .animation(.easeInOut(duration: 0.2), value: errorMessage)
         }
     }
-}
 
-extension AutorizationView {
-    // функция авторизации пользователя
-    private func login(email: String, password: String) {
-        // проверяем есть ли в базе сохраненный пользователь с таким же логином
+    private func attemptLogin() {
+        withAnimation { errorMessage = "" }
+        guard !email.isEmpty else { withAnimation { errorMessage = "Введите email" }; return }
+        guard email.isValidEmail else { withAnimation { errorMessage = "Неверный формат email" }; return }
+        guard password.count >= 8 else { withAnimation { errorMessage = "Пароль менее 8 символов" }; return }
         guard let foundUser = users.first(where: { $0.login == email }) else {
-            status = "Неверный логин"
-            return
+            withAnimation { errorMessage = "Пользователь не найден" }; return
         }
-        // записываем id найденного пользователя с таким же логином
-        let userId = foundUser.id
-        // создаем контейнер для хранения пароля пользователя
-        var userPassword: Data?
-        // пытаемся достать пароль пользователя с таким id
-        do {
-            userPassword = try KeychainManager.getPassword(for: userId)
-        } catch {
-            status = "Пароль пользователя не найден"
-            return
+        guard let data = try? KeychainManager.getPassword(for: foundUser.id),
+              let stored = String(data: data, encoding: .utf8) else {
+            withAnimation { errorMessage = "Ошибка чтения пароля" }; return
         }
-        // переводим найденный пароль в формат String
-        guard let storedPassword = userPassword,
-              let userStringPassword = String(data: storedPassword, encoding: .utf8) else {
-            status = "Не удалось прочитать сохранённый пароль"
-            return
+        guard stored == password else {
+            withAnimation { errorMessage = "Неверный пароль" }; return
         }
-        
-        // проверяем совпадает ли найденный пароль пользователя с введенным в SecureField
-        if userStringPassword == password {
-            // если совпали, то логинимся и сохраняем id пользователя в UserDefaults
-            status = "Пользователь успешно авторизован"
-            UserDefaults.standard.set(userId.uuidString, forKey: UserDefaultKeys.currentUserId)
-            isLogged = true
-        } else {
-            status = "Неверный пароль"
-        }
+        UserDefaults.standard.set(foundUser.id.uuidString, forKey: UserDefaultKeys.currentUserId)
+        isLogged = true
     }
 }
 
 extension String {
-    // функция проверки корректности ввода логина в формате почты
     var isValidEmail: Bool {
-            let emailPredicate = NSPredicate(format: "SELF MATCHES %@", "[A-Z0-9a-z._%+-]+@[A-Za-z0-9-]+\\.[A-Za-z]{2,}")
-            return emailPredicate.evaluate(with: self)
-        }
+        NSPredicate(format: "SELF MATCHES %@", "[A-Z0-9a-z._%+-]+@[A-Za-z0-9-]+\\.[A-Za-z]{2,}")
+            .evaluate(with: self)
+    }
 }
