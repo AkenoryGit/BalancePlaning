@@ -2,116 +2,145 @@
 //  ProfileView.swift
 //  BalancePlaning
 //
-//  Created by Дмитрий Дудник on 09.02.2026.
-//
 
 import SwiftUI
 import SwiftData
 
 struct ProfileView: View {
-    // подключаемся к SwiftData через context
     @Environment(\.modelContext) private var context
     @Binding var isLogged: Bool
-    
+
     @State private var showAddAccountSheet: Bool = false
     @State private var showAddCategorySheet: Bool = false
     @State private var accountName: String = ""
     @State private var categoryName: String = ""
     @State private var startBalance: String = ""
     @State private var type: CategoryType = .expense
-    
-    private var headView: Header
-    private var accountsView: AccountsView
-    private var incomeCategoriesView: CategoriesView
-    private var expenseCategoriesView: CategoriesView
-    
-    // создаем экземпляр UserService для определения id текущего пользователя в дальнейшем
-    var userService: UserService {
-        UserService(context: context) }
-    
-    // инициализируем нужные параметры для хедера
-    init(headView: Header, isLogged: Binding<Bool>, accountsView: AccountsView) {
-        self.headView = headView
-        self._isLogged = isLogged
-        self.headView.avatarSystemName = "person.fill"
-        self.headView.trailingAvatar = 0
-        
-        self.accountsView = accountsView
-        self.incomeCategoriesView = CategoriesView(isIncome: true)
-        self.expenseCategoriesView = CategoriesView(isIncome: false)
-    }
-    
+
+    var userService: UserService { UserService(context: context) }
+
     var body: some View {
-        GeometryReader { geometry in
-                ScrollView {
-                    Spacer(minLength: 250)
-                    accountsView
-                    
-                    Button("+ Добавить счёт") {
-                        showAddAccountSheet = true
-                        accountName = ""
-                        startBalance = ""
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+
+                    // Карточка пользователя
+                    if let user = userService.getCurrentUser() {
+                        HStack(spacing: 14) {
+                            // Аватар с первой буквой логина
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [AppTheme.Colors.accent, AppTheme.Colors.accentSecondary],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 52, height: 52)
+                                .overlay {
+                                    Text(String(user.login.prefix(1)).uppercased())
+                                        .font(.title2.bold())
+                                        .foregroundStyle(.white)
+                                }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Аккаунт")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(user.login)
+                                    .font(.headline)
+                            }
+                            Spacer()
+                        }
+                        .padding(16)
+                        .cardStyle()
+                        .padding(.horizontal)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal)
-                    
-                    incomeCategoriesView
-                    
-                    Button("+ Добавить категорию доходов") {
-                        showAddCategorySheet = true
-                        categoryName = ""
-                        type = CategoryType.income
+
+                    // Счета
+                    VStack(spacing: 8) {
+                        ProfileSectionHeader(title: "Мои счета") {
+                            showAddAccountSheet = true
+                            accountName = ""
+                            startBalance = ""
+                        }
+                        AccountsView()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal)
-                    
-                    expenseCategoriesView
-                    
-                    Button("+ Добавить категорию расходов") {
-                        showAddCategorySheet = true
-                        categoryName = ""
-                        type = CategoryType.expense
+
+                    // Категории доходов
+                    VStack(spacing: 8) {
+                        ProfileSectionHeader(title: "Категории доходов") {
+                            showAddCategorySheet = true
+                            categoryName = ""
+                            type = .income
+                        }
+                        CategoriesView(isIncome: true)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal)
-                    
-                    // кнопка выхода из профиля пользователя и сброс id пользователя из UserDefaults
-                    Button("Выйти", role: .destructive) {
+
+                    // Категории расходов
+                    VStack(spacing: 8) {
+                        ProfileSectionHeader(title: "Категории расходов") {
+                            showAddCategorySheet = true
+                            categoryName = ""
+                            type = .expense
+                        }
+                        CategoriesView(isIncome: false)
+                    }
+
+                    // Кнопка выхода
+                    Button(role: .destructive) {
                         UserDefaults.standard.removeObject(forKey: UserDefaultKeys.currentUserId)
                         isLogged = false
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal)
-                }
-                .padding(.top, 1)
-                .background(Color(.systemGroupedBackground))
-                .padding(.top, 1)
-                ZStack {
-                    headView
-                        .frame(width: geometry.size.width, height: 250)
-                    VStack {
-                        // если все правильно с авторизацией пользотваеля, то отображаем его логин(почту) на экране
-                        if let user = userService.getCurrentUser() {
-                            Text(user.login)
-                                .font(.title2)
-                        } else {
-                            Text("Пользователь не найден")
-                                .foregroundStyle(.secondary)
-                                .italic()
+                    } label: {
+                        HStack {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                            Text("Выйти из аккаунта")
                         }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
                     }
-                    .padding(.top, 200)
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .padding(.horizontal)
+                    .padding(.bottom, 32)
                 }
-                .sheet(isPresented: $showAddAccountSheet) {
-                    AddAccountSheet(accountName: $accountName, startBalance: $startBalance)
+                .padding(.top, 8)
+            }
+            .background(AppTheme.Colors.pageBackground)
+            .navigationTitle("Профиль")
+            .navigationBarTitleDisplayMode(.large)
+        }
+        .sheet(isPresented: $showAddAccountSheet) {
+            AddAccountSheet(accountName: $accountName, startBalance: $startBalance)
+        }
+        .sheet(isPresented: $showAddCategorySheet) {
+            AddCategorySheet(categoryName: $categoryName, type: $type)
+        }
+    }
+}
+
+// MARK: - Заголовок секции с кнопкой "+"
+
+struct ProfileSectionHeader: View {
+    let title: String
+    let onAdd: () -> Void
+
+    var body: some View {
+        HStack {
+            Text(title)
+                .font(.headline)
+                .padding(.leading, 20)
+            Spacer()
+            Button(action: onAdd) {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus")
+                        .font(.caption.bold())
+                    Text("Добавить")
+                        .font(.subheadline)
                 }
-                .sheet(isPresented: $showAddCategorySheet) {
-                    AddCategorySheet(categoryName: $categoryName, type: $type)
-                }
+                .foregroundStyle(AppTheme.Colors.accent)
+            }
+            .padding(.trailing, 20)
         }
     }
 }

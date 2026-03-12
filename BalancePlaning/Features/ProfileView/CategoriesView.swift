@@ -23,53 +23,84 @@ struct CategoriesView: View {
         return allCategories.filter { $0.userId == userId && $0.type == type }
     }
 
+    private var accentColor: Color {
+        isIncome ? AppTheme.Colors.income : AppTheme.Colors.expense
+    }
+
+    private var categoryIcon: String {
+        isIncome ? "arrow.down.circle.fill" : "arrow.up.circle.fill"
+    }
+
     var body: some View {
-        VStack {
-            Text(isIncome ? "Категории доходов" : "Категории расходов")
-                .font(.title2)
-                .fontWeight(.semibold)
-                .padding(.horizontal)
+        VStack(spacing: 6) {
             ForEach(filteredCategories) { category in
                 Button(action: { selectedCategory = category }) {
-                    HStack {
-                        Spacer()
+                    HStack(spacing: 14) {
+                        Image(systemName: categoryIcon)
+                            .font(.title3)
+                            .foregroundStyle(accentColor)
+                            .frame(width: 40, height: 40)
+                            .background(accentColor.opacity(0.1))
+                            .clipShape(Circle())
+
                         Text(category.name)
                             .font(.headline)
                             .foregroundStyle(.primary)
+
                         Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
                     }
+                    .padding(14)
+                    .cardStyle()
+                    .padding(.horizontal, 20)
                 }
-                .padding()
-                .background(Color(.systemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
-                .padding(.horizontal, 20)
             }
         }
         .overlay {
             if filteredCategories.isEmpty {
-                ContentUnavailableView("Нет категорий", systemImage: "bag.badge.minus")
+                ContentUnavailableView("Нет категорий", systemImage: "tag")
+                    .padding(.top, 20)
             }
         }
         .sheet(item: $selectedCategory) { item in
-            VStack(spacing: 16) {
-                Text("Категория")
-                    .font(.headline)
+            VStack(spacing: 0) {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.4))
+                    .frame(width: 40, height: 4)
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
+
+                Image(systemName: categoryIcon)
+                    .font(.system(size: 44))
+                    .foregroundStyle(accentColor)
+                    .padding(.bottom, 8)
+
                 Text(item.name)
-                    .font(.largeTitle)
-                    .bold()
-                Text("Тип")
-                    .font(.headline)
+                    .font(.title2.bold())
+
                 Text(item.type.displayName)
-                    .font(.title2)
-                    .foregroundStyle(.blue)
-                Button("Удалить категорию", role: .destructive) {
-                    let service = CategoryService(context: context)
-                    service.deleteCategory(item)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+                    .padding(.bottom, 32)
+
+                Button(role: .destructive) {
+                    CategoryService(context: context).deleteCategory(item)
                     selectedCategory = nil
+                } label: {
+                    Label("Удалить категорию", systemImage: "trash")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
                 }
+                .buttonStyle(.bordered)
+                .tint(.red)
+                .padding(.horizontal)
+                .padding(.bottom, 32)
             }
-            .padding()
+            .presentationDetents([.medium])
         }
     }
 }
