@@ -5,7 +5,7 @@
 //  Created by Дмитрий Дудник on 25.02.2026.
 //
 
-import SwiftUI
+import Foundation
 import SwiftData
 
 @Model

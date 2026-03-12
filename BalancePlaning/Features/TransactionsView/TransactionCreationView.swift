@@ -8,21 +8,24 @@
 import SwiftUI
 import SwiftData
 
+// MARK: - Выбор типа операции
+
 struct TransactionsCategoryView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-    
+
     @State private var isTransactionPresented: Bool = false
     @State private var isExpensePresented: Bool = false
     @State private var isIncomePresented: Bool = false
-    
+
     @Binding var isRootPresented: Bool
-    
+
     var transactionService: TransactionService {
         TransactionService(context: context)
     }
+
     var body: some View {
-        VStack{
+        VStack {
             Button("Создать перевод") {
                 isTransactionPresented = true
             }
@@ -60,14 +63,50 @@ struct TransactionsCategoryView: View {
     }
 }
 
+// MARK: - Настройки повторяющейся операции (общий компонент)
+
+struct RecurringSettingsView: View {
+    @Binding var date: Date
+    @Binding var endDate: Date
+    @Binding var interval: RecurringInterval?
+    @Binding var intervalDays: String
+
+    var body: some View {
+        Picker("Интервал", selection: $interval) {
+            ForEach(RecurringInterval.allCases, id: \.self) { i in
+                Text(i.displayName).tag(Optional(i))
+            }
+        }
+        if interval == .everyNDays {
+            TextField("Количество дней", text: $intervalDays)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .keyboardType(.numberPad)
+                .padding(.horizontal)
+        }
+        DatePicker("Дата начала", selection: $date, displayedComponents: [.date])
+            .datePickerStyle(.compact)
+            .padding()
+        DatePicker(
+            "Дата окончания",
+            selection: $endDate,
+            in: date...Calendar.current.date(byAdding: .year, value: 1, to: date)!,
+            displayedComponents: [.date]
+        )
+        .datePickerStyle(.compact)
+        .padding()
+    }
+}
+
+// MARK: - Добавление перевода между счетами
+
 struct AddTransactionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
-    
+
     @Query private var allUserAccounts: [Account]
-    
+
     @Binding var isRootPresented: Bool
-    
+
     @State var fromAccount: Account?
     @State var toAccount: Account?
     @State var amount: String = "0"
@@ -76,18 +115,18 @@ struct AddTransactionView: View {
     @State var recurringOperation: Bool = false
     @State var interval: RecurringInterval? = .monthly
     @State var intervalDays: String = "2"
-    
+
     private var accountService: AccountService {
         AccountService(context: context)
     }
-    
+
     private var userAccounts: [Account] {
         guard let userId = currentUserId() else { return [] }
         return allUserAccounts.filter { $0.userId == userId }
     }
-    
+
     var transactionService: TransactionService
-    
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -116,41 +155,11 @@ struct AddTransactionView: View {
                     Toggle("Повторяющийся перевод", isOn: $recurringOperation)
                         .padding(.horizontal)
                     if recurringOperation {
-                        Picker("Интервал", selection: $interval) {
-                            ForEach(RecurringInterval.allCases, id: \.self) { interval in
-                                Text(interval.displayName)
-                                    .tag(Optional(interval))
-                            }
-                        }
-                        if interval == .everyNDays {
-                            TextField("Количество дней", text: $intervalDays)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .keyboardType(.numberPad)
-                                .padding(.horizontal)
-                        }
-                        DatePicker(
-                            "Дата начала",
-                            selection: $date,
-                            displayedComponents: [.date]
-                        )
-                        .datePickerStyle(.compact)
-                        .padding()
-                        DatePicker(
-                            "Дата окончания",
-                            selection: $endDate,
-                            in: date...Calendar.current.date(byAdding: .year, value: 1, to: date)!,
-                            displayedComponents: [.date]
-                        )
-                        .datePickerStyle(.compact)
-                        .padding()
+                        RecurringSettingsView(date: $date, endDate: $endDate, interval: $interval, intervalDays: $intervalDays)
                     } else {
-                        DatePicker(
-                            "Выберите дату",
-                            selection: $date,
-                            displayedComponents: [.date]
-                        )
-                        .datePickerStyle(.graphical)
-                        .padding()
+                        DatePicker("Выберите дату", selection: $date, displayedComponents: [.date])
+                            .datePickerStyle(.graphical)
+                            .padding()
                     }
                     Button("Добавить") {
                         guard let from = fromAccount,
@@ -163,8 +172,7 @@ struct AddTransactionView: View {
                         if !recurringOperation {
                             transactionService.addTransactions(from: from, to: to, amount: amountDecimal, startDate: date)
                         } else {
-                            let intervalDaysInt = Int(intervalDays)
-                            transactionService.addTransactions(from: from, to: to, amount: amountDecimal, startDate: date, endDate: endDate, interval: interval, intervalDays: intervalDaysInt)
+                            transactionService.addTransactions(from: from, to: to, amount: amountDecimal, startDate: date, endDate: endDate, interval: interval, intervalDays: Int(intervalDays))
                         }
                         isRootPresented = false
                         dismiss()
@@ -181,15 +189,17 @@ struct AddTransactionView: View {
     }
 }
 
+// MARK: - Добавление расхода
+
 struct AddExpenseView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
-    
+
     @Query private var allUserAccounts: [Account]
     @Query private var allCategories: [Category]
-    
+
     @Binding var isRootPresented: Bool
-    
+
     @State var fromAccount: Account?
     @State var toCategory: Category?
     @State var amount: String = "0"
@@ -198,23 +208,23 @@ struct AddExpenseView: View {
     @State var recurringOperation: Bool = false
     @State var interval: RecurringInterval? = .monthly
     @State var intervalDays: String = "2"
-    
+
     private var accountService: AccountService {
         AccountService(context: context)
     }
-    
+
     private var userAccounts: [Account] {
         guard let userId = currentUserId() else { return [] }
         return allUserAccounts.filter { $0.userId == userId }
     }
-    
+
     private var expenseCategories: [Category] {
         guard let userId = currentUserId() else { return [] }
         return allCategories.filter { $0.userId == userId && $0.type == .expense }
     }
-    
+
     var transactionService: TransactionService
-    
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -231,8 +241,7 @@ struct AddExpenseView: View {
                     Picker("Категория расхода", selection: $toCategory) {
                         Text("Не выбрано").tag(Optional<Category>.none)
                         ForEach(expenseCategories) { category in
-                            Text(category.name)
-                                .tag(Optional(category))
+                            Text(category.name).tag(Optional(category))
                         }
                     }
                     .pickerStyle(.navigationLink)
@@ -243,41 +252,11 @@ struct AddExpenseView: View {
                     Toggle("Повторяющийся расход", isOn: $recurringOperation)
                         .padding(.horizontal)
                     if recurringOperation {
-                        Picker("Интервал", selection: $interval) {
-                            ForEach(RecurringInterval.allCases, id: \.self) { interval in
-                                Text(interval.displayName)
-                                    .tag(Optional(interval))
-                            }
-                        }
-                        if interval == .everyNDays {
-                            TextField("Количество дней", text: $intervalDays)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .keyboardType(.numberPad)
-                                .padding(.horizontal)
-                        }
-                        DatePicker(
-                            "Дата начала",
-                            selection: $date,
-                            displayedComponents: [.date]
-                        )
-                        .datePickerStyle(.compact)
-                        .padding()
-                        DatePicker(
-                            "Дата окончания",
-                            selection: $endDate,
-                            in: date...Calendar.current.date(byAdding: .year, value: 1, to: date)!,
-                            displayedComponents: [.date]
-                        )
-                        .datePickerStyle(.compact)
-                        .padding()
+                        RecurringSettingsView(date: $date, endDate: $endDate, interval: $interval, intervalDays: $intervalDays)
                     } else {
-                        DatePicker(
-                            "Выберите дату",
-                            selection: $date,
-                            displayedComponents: [.date]
-                        )
-                        .datePickerStyle(.graphical)
-                        .padding()
+                        DatePicker("Выберите дату", selection: $date, displayedComponents: [.date])
+                            .datePickerStyle(.graphical)
+                            .padding()
                     }
                     Button("Добавить") {
                         guard let from = fromAccount,
@@ -288,10 +267,9 @@ struct AddExpenseView: View {
                             return
                         }
                         if !recurringOperation {
-                            transactionService.addExpenense(from: from, to: to, amount: amountDecimal, startDate: date)
+                            transactionService.addExpense(from: from, to: to, amount: amountDecimal, startDate: date)
                         } else {
-                            let intervalDaysInt = Int(intervalDays)
-                            transactionService.addExpenense(from: from, to: to, amount: amountDecimal, startDate: date, endDate: endDate, interval: interval, intervalDays: intervalDaysInt)
+                            transactionService.addExpense(from: from, to: to, amount: amountDecimal, startDate: date, endDate: endDate, interval: interval, intervalDays: Int(intervalDays))
                         }
                         isRootPresented = false
                         dismiss()
@@ -308,15 +286,17 @@ struct AddExpenseView: View {
     }
 }
 
+// MARK: - Добавление пополнения
+
 struct AddIncomeView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
-    
+
     @Query private var allUserAccounts: [Account]
     @Query private var allCategories: [Category]
-    
+
     @Binding var isRootPresented: Bool
-    
+
     @State var fromCategory: Category?
     @State var toAccount: Account?
     @State var amount: String = "0"
@@ -325,23 +305,23 @@ struct AddIncomeView: View {
     @State var recurringOperation: Bool = false
     @State var interval: RecurringInterval? = .monthly
     @State var intervalDays: String = "2"
-    
+
     private var accountService: AccountService {
         AccountService(context: context)
     }
-    
+
     private var userAccounts: [Account] {
         guard let userId = currentUserId() else { return [] }
         return allUserAccounts.filter { $0.userId == userId }
     }
-    
+
     private var incomeCategories: [Category] {
         guard let userId = currentUserId() else { return [] }
         return allCategories.filter { $0.userId == userId && $0.type == .income }
     }
-    
+
     var transactionService: TransactionService
-    
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -350,8 +330,7 @@ struct AddIncomeView: View {
                     Picker("Категория поступления", selection: $fromCategory) {
                         Text("Не выбрано").tag(Optional<Category>.none)
                         ForEach(incomeCategories) { category in
-                            Text(category.name)
-                                .tag(Optional(category))
+                            Text(category.name).tag(Optional(category))
                         }
                     }
                     .pickerStyle(.navigationLink)
@@ -370,41 +349,11 @@ struct AddIncomeView: View {
                     Toggle("Повторяющееся поступление", isOn: $recurringOperation)
                         .padding(.horizontal)
                     if recurringOperation {
-                        Picker("Интервал", selection: $interval) {
-                            ForEach(RecurringInterval.allCases, id: \.self) { interval in
-                                Text(interval.displayName)
-                                    .tag(Optional(interval))
-                            }
-                        }
-                        if interval == .everyNDays {
-                            TextField("Количество дней", text: $intervalDays)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .keyboardType(.numberPad)
-                                .padding(.horizontal)
-                        }
-                        DatePicker(
-                            "Дата начала",
-                            selection: $date,
-                            displayedComponents: [.date]
-                        )
-                        .datePickerStyle(.compact)
-                        .padding()
-                        DatePicker(
-                            "Дата окончания",
-                            selection: $endDate,
-                            in: date...Calendar.current.date(byAdding: .year, value: 1, to: date)!,
-                            displayedComponents: [.date]
-                        )
-                        .datePickerStyle(.compact)
-                        .padding()
+                        RecurringSettingsView(date: $date, endDate: $endDate, interval: $interval, intervalDays: $intervalDays)
                     } else {
-                        DatePicker(
-                            "Выберите дату",
-                            selection: $date,
-                            displayedComponents: [.date]
-                        )
-                        .datePickerStyle(.graphical)
-                        .padding()
+                        DatePicker("Выберите дату", selection: $date, displayedComponents: [.date])
+                            .datePickerStyle(.graphical)
+                            .padding()
                     }
                     Button("Добавить") {
                         guard let from = fromCategory,
@@ -417,8 +366,7 @@ struct AddIncomeView: View {
                         if !recurringOperation {
                             transactionService.addIncome(from: from, to: to, amount: amountDecimal, startDate: date)
                         } else {
-                            let intervalDaysInt = Int(intervalDays)
-                            transactionService.addIncome(from: from, to: to, amount: amountDecimal, startDate: date, endDate: endDate, interval: interval, intervalDays: intervalDaysInt)
+                            transactionService.addIncome(from: from, to: to, amount: amountDecimal, startDate: date, endDate: endDate, interval: interval, intervalDays: Int(intervalDays))
                         }
                         isRootPresented = false
                         dismiss()

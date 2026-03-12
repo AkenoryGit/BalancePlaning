@@ -167,7 +167,7 @@ struct TransactionDetailView: View {
             }
             Button("Удалить операцию") {
                 let service = TransactionService(context: context)
-                service.dellTransaction(transaction)
+                service.deleteTransaction(transaction)
                 dismiss()
             }
             Button("Закрыть окно") {

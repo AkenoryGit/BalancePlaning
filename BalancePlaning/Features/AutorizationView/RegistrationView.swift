@@ -48,9 +48,9 @@ struct RegistrationView: View {
                         status = "Пароль должен быть не менее 8 символов"
                     } else if login.isEmpty  {
                         status = "Логин пустой"
-                    } else if allUsers.contains(where: { $0.login == $login.wrappedValue }) {
+                    } else if allUsers.contains(where: { $0.login == login }) {
                         status = "Пользователь с таким аккаунтом уже существует"
-                    } else if !$login.wrappedValue.isValidEmail {
+                    } else if !login.isValidEmail {
                             status = "Неверный формат email"
                     } else {
                         do {

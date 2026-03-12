@@ -5,12 +5,10 @@
 //  Created by Дмитрий Дудник on 25.02.2026.
 //
 
-import SwiftUI
+import Foundation
 import SwiftData
 
 class CategoryService {
-    @Query(sort: \Category.userId) var categories:[Category] = []
-    
     private let context: ModelContext
     
     init(context: ModelContext) {
@@ -37,7 +35,7 @@ class CategoryService {
         }
     }
     
-    func dellCategory(_ category: Category) {
+    func deleteCategory(_ category: Category) {
         context.delete(category)
         
         do {

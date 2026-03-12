@@ -5,7 +5,7 @@
 //  Created by Дмитрий Дудник on 09.02.2026.
 //
 
-import SwiftUI
+import Foundation
 import SwiftData
 
 // для удобства, чтобы не писать каждый раз "currentUserId" и не допускать опечатки

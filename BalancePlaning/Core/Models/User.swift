@@ -5,7 +5,7 @@
 //  Created by Дмитрий Дудник on 04.02.2026.
 //
 
-import SwiftUI
+import Foundation
 import SwiftData
 
 // модель пользователя

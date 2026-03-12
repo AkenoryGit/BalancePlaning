@@ -5,7 +5,7 @@
 //  Created by Дмитрий Дудник on 12.02.2026.
 //
 
-import SwiftUI
+import Foundation
 import SwiftData
 
 class AccountService {
@@ -34,7 +34,7 @@ class AccountService {
         }
     }
     
-    func dellAccount(_ account: Account) {
+    func deleteAccount(_ account: Account) {
         context.delete(account)
         
         do {
@@ -77,24 +77,23 @@ class AccountService {
         }
         
         func collectAmountTransactions(account: Account, startDate: Date?, finishDate: Date) -> Decimal {
-            let transactionFrom = foundUserOperations(type: .transaction, startDate: startDate, finishDate: finishDate)
-                .filter { $0.fromAccount == account }
-            
-            let transactionTo = foundUserOperations(type: .transaction, startDate: startDate, finishDate: finishDate)
-                .filter { $0.toAccount == account }
-            
-            let expenses = foundUserOperations(type: .expense, startDate: startDate, finishDate: finishDate)
-                .filter { $0.fromAccount == account }
-            
-            let incomes = foundUserOperations(type: .income, startDate: startDate, finishDate: finishDate)
-                .filter { $0.toAccount == account }
-            
-            let outgoing = transactionFrom.reduce(Decimal.zero) { $0 + $1.amount } +
-                           expenses.reduce(Decimal.zero) { $0 + $1.amount }
-            
-            let incoming = transactionTo.reduce(Decimal.zero) { $0 + $1.amount } +
-                           incomes.reduce(Decimal.zero) { $0 + $1.amount }
-            
+            let all = fetchUserTransactions()
+
+            let filtered: [Transaction]
+            if let startDate = startDate {
+                filtered = all.filter { $0.date >= startDate && $0.date <= finishDate }
+            } else {
+                filtered = all.filter { $0.date <= finishDate }
+            }
+
+            let outgoing = filtered
+                .filter { ($0.type == .transaction || $0.type == .expense) && $0.fromAccount == account }
+                .reduce(Decimal.zero) { $0 + $1.amount }
+
+            let incoming = filtered
+                .filter { ($0.type == .transaction || $0.type == .income) && $0.toAccount == account }
+                .reduce(Decimal.zero) { $0 + $1.amount }
+
             return incoming - outgoing
         }
     

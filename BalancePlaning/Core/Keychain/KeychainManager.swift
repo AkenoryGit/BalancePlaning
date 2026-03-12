@@ -5,7 +5,7 @@
 //  Created by Дмитрий Дудник on 05.02.2026.
 //
 
-import SwiftUI
+import Foundation
 import Security
 
 enum KeychainError: Error {
@@ -41,10 +41,7 @@ final class KeychainManager {
         guard status == errSecSuccess else {
             throw KeychainError.unowned(status: status)
         }
-        // если получилось сохранить, сообщаем об этом в консоль
-        if status == errSecSuccess {
-            print("Пароль успешно сохранен")
-        }
+        print("Пароль успешно сохранен")
     }
     
     // функция получения пароля пользователя

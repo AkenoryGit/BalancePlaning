@@ -5,7 +5,7 @@
 //  Created by Дмитрий Дудник on 26.02.2026.
 //
 
-import SwiftUI
+import Foundation
 import SwiftData
 
 struct TransactionService {
@@ -33,11 +33,10 @@ struct TransactionService {
                 type: .transaction
             ))
         } else {
-            guard let endDate = endDate else {
+            guard let endDate = endDate, let interval = interval else {
                 print("Не указана дата окончания для повторяющейся транзакции")
                 return
             }
-            guard let interval = interval else { return }
             let groupId = UUID()
             let days = generateDates(from: startDate, to: endDate, interval: interval)
             for day in days {
@@ -68,8 +67,8 @@ struct TransactionService {
         }
     }
     
-    func addExpenense(from: Account, to: Category, amount: Decimal, startDate: Date, endDate: Date? = nil,
-                      interval: RecurringInterval? = nil, intervalDays: Int? = nil) {
+    func addExpense(from: Account, to: Category, amount: Decimal, startDate: Date, endDate: Date? = nil,
+                    interval: RecurringInterval? = nil, intervalDays: Int? = nil) {
         guard let curUserID = currentUserId() else {
             print("Пользователь не найден")
             return
@@ -85,11 +84,10 @@ struct TransactionService {
             type: .expense
         ))
         } else {
-            guard let endDate = endDate else {
+            guard let endDate = endDate, let interval = interval else {
                 print("Не указана дата окончания для повторяющейся оплаты")
                 return
             }
-            guard let interval = interval else { return }
             let groupId = UUID()
             let days = generateDates(from: startDate, to: endDate, interval: interval)
             for day in days {
@@ -137,11 +135,10 @@ struct TransactionService {
                 type: .income
             ))
         } else {
-            guard let endDate = endDate else {
+            guard let endDate = endDate, let interval = interval else {
                 print("Не указана дата окончания для повторяющегося поступления")
                 return
             }
-            guard let interval = interval else { return }
             let groupId = UUID()
             let days = generateDates(from: startDate, to: endDate, interval: interval)
             for day in days {
@@ -172,7 +169,7 @@ struct TransactionService {
         }
     }
     
-    func dellTransaction(_ transaction: Transaction) {
+    func deleteTransaction(_ transaction: Transaction) {
         context.delete(transaction)
         
         do {

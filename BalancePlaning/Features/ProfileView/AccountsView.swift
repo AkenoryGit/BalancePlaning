@@ -74,13 +74,13 @@ struct AccountsView: View {
                         .bold()
                     Text("Баланс")
                         .font(.headline)
-                    Text(item.balance, format: .number.precision(.fractionLength(0...2)))
+                    Text(accountService.currentBalance(for: item), format: .number.precision(.fractionLength(0...2)))
                         .font(.title2)
                         .foregroundStyle(.blue)
                     Button("Удалить счёт", role: .destructive) {
                         if let item = selectedAccount {
                             let service = AccountService(context: context)
-                            service.dellAccount(item)
+                            service.deleteAccount(item)
                             selectedAccount = nil
                         }
                     }
