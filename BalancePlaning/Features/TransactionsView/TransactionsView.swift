@@ -98,38 +98,36 @@ struct TransactionsView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 20)
             }
-            if !showAllTransactions {
-                ForEach(dailyTransactions, id: \.self) { transaction in
-                    Button(action: {
-                        selectedTransacion = transaction
-                    }) {
-                        Spacer()
-                        Text("\(transaction.type.displayName) : \(transaction.date, format: .dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits)) - \(transaction.amount , format: .number.precision(.fractionLength(0...2))) руб")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        Spacer()
+            ScrollView {
+                if !showAllTransactions {
+                    ForEach(dailyTransactions, id: \.self) { transaction in
+                        Button(action: {
+                            selectedTransacion = transaction
+                        }) {
+                            Spacer()
+                            Text("\(transaction.type.displayName) : \(transaction.date, format: .dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits)) - \(transaction.amount , format: .number.precision(.fractionLength(0...2))) руб")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                        }
                     }
-                }
-                .sheet(item: $selectedTransacion) { transaction in
-                    TransactionDetailView(transaction: transaction)
-                }
-            } else {
-                ForEach(userTransactions.sorted { $0.date < $1.date} ) { transaction in
-                    Button(action: {
-                        selectedTransacion = transaction
-                    }) {
-                        Spacer()
-                        Text("\(transaction.type.displayName) : \(transaction.date, format: .dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits)) - \(transaction.amount , format: .number.precision(.fractionLength(0...2))) руб")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        Spacer()
+                } else {
+                    ForEach(userTransactions.sorted { $0.date < $1.date} ) { transaction in
+                        Button(action: {
+                            selectedTransacion = transaction
+                        }) {
+                            Spacer()
+                            Text("\(transaction.type.displayName) : \(transaction.date, format: .dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits)) - \(transaction.amount , format: .number.precision(.fractionLength(0...2))) руб")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                        }
                     }
-                }
-                .sheet(item: $selectedTransacion) { transaction in
-                    TransactionDetailView(transaction: transaction)
                 }
             }
-            Spacer()
+            .sheet(item: $selectedTransacion) { transaction in
+                TransactionDetailView(transaction: transaction, selectedTransaction: $selectedTransacion)
+            }
             
             Button("Добавить операцию") {
                 isPresented = true
@@ -143,10 +141,17 @@ struct TransactionsView: View {
 
 struct TransactionDetailView: View {
     @Environment(\.modelContext) private var context
-    @Environment(\.dismiss) private var dismiss
-    
+
     let transaction: Transaction
-    
+    // биндинг на selectedTransacion в родителе — нужен чтобы обнулить его ДО удаления
+    @Binding var selectedTransaction: Transaction?
+
+    @State private var showEdit: Bool = false
+    @State private var showDeleteAlert: Bool = false
+    @State private var editWasSaved: Bool = false
+    // действие с БД, которое выполняется в .onDisappear, когда View полностью исчезла
+    @State private var pendingAction: (() -> Void)? = nil
+
     var body: some View {
         VStack(spacing: 20) {
             Text("Детали операции:")
@@ -165,14 +170,57 @@ struct TransactionDetailView: View {
                 Text("Перевод со счета \(transaction.fromAccount?.name ?? "неизвестно")")
                 Text("На счет \(transaction.toAccount?.name ?? "неизвестно")")
             }
+            Button("Редактировать") {
+                editWasSaved = false
+                showEdit = true
+            }
+            .sheet(isPresented: $showEdit) {
+                EditTransactionView(
+                    isRootPresented: $showEdit,
+                    transaction: transaction,
+                    onSaved: { action in
+                        pendingAction = action
+                        editWasSaved = true
+                    }
+                )
+            }
+            // когда шит редактирования закрылся и было сохранение — закрываем Detail View тоже
+            .onChange(of: showEdit) { _, isShowing in
+                if !isShowing && editWasSaved {
+                    selectedTransaction = nil
+                }
+            }
             Button("Удалить операцию") {
-                let service = TransactionService(context: context)
-                service.deleteTransaction(transaction)
-                dismiss()
+                if transaction.recurringGroupId != nil {
+                    showDeleteAlert = true
+                } else {
+                    let service = TransactionService(context: context)
+                    pendingAction = { service.deleteTransaction(transaction) }
+                    selectedTransaction = nil
+                }
+            }
+            .alert("Удалить повторяющуюся операцию?", isPresented: $showDeleteAlert) {
+                Button("Только эту", role: .destructive) {
+                    let service = TransactionService(context: context)
+                    pendingAction = { service.deleteTransaction(transaction) }
+                    selectedTransaction = nil
+                }
+                Button("Все последующие", role: .destructive) {
+                    guard let groupId = transaction.recurringGroupId else { return }
+                    let capturedDate = transaction.date
+                    let service = TransactionService(context: context)
+                    pendingAction = { service.deleteFollowingTransactions(groupId: groupId, from: capturedDate) }
+                    selectedTransaction = nil
+                }
+                Button("Отмена", role: .cancel) {}
             }
             Button("Закрыть окно") {
-                dismiss()
+                selectedTransaction = nil
             }
+        }
+        .onDisappear {
+            pendingAction?()
+            pendingAction = nil
         }
     }
 }

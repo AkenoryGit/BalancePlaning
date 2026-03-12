@@ -38,7 +38,7 @@ struct TransactionService {
                 return
             }
             let groupId = UUID()
-            let days = generateDates(from: startDate, to: endDate, interval: interval)
+            let days = generateDates(from: startDate, to: endDate, interval: interval, intervalDays: intervalDays)
             for day in days {
                 newTransaction.append(Transaction(
                     fromAccount: from,
@@ -89,7 +89,7 @@ struct TransactionService {
                 return
             }
             let groupId = UUID()
-            let days = generateDates(from: startDate, to: endDate, interval: interval)
+            let days = generateDates(from: startDate, to: endDate, interval: interval, intervalDays: intervalDays)
             for day in days {
                 newExpense.append(Transaction(
                     fromAccount: from,
@@ -140,7 +140,7 @@ struct TransactionService {
                 return
             }
             let groupId = UUID()
-            let days = generateDates(from: startDate, to: endDate, interval: interval)
+            let days = generateDates(from: startDate, to: endDate, interval: interval, intervalDays: intervalDays)
             for day in days {
                 newIncome.append(Transaction(
                     fromCategory: from,
@@ -171,12 +171,29 @@ struct TransactionService {
     
     func deleteTransaction(_ transaction: Transaction) {
         context.delete(transaction)
-        
+
         do {
             try context.save()
             print("Транзакция \(transaction) была успешно удалена!")
         } catch {
             print("Ошибка удаления транзакции: \(error)")
+        }
+    }
+
+    // удаляет все транзакции одной серии начиная с указанной даты
+    func deleteFollowingTransactions(groupId: UUID, from date: Date) {
+        guard let userId = currentUserId() else { return }
+        let predicate = #Predicate<Transaction> { $0.userId == userId }
+        let descriptor = FetchDescriptor<Transaction>(predicate: predicate)
+
+        do {
+            let all = try context.fetch(descriptor)
+            let toDelete = all.filter { $0.recurringGroupId == groupId && $0.date >= date }
+            for t in toDelete { context.delete(t) }
+            try context.save()
+            print("Удалено \(toDelete.count) повторяющихся транзакций")
+        } catch {
+            print("Ошибка удаления серии транзакций: \(error)")
         }
     }
     
