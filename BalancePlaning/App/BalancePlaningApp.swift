@@ -12,7 +12,7 @@ import SwiftData
 struct BalancePlaningApp: App {
 
     let container: ModelContainer = {
-        let schema = Schema([User.self, Account.self, AccountGroup.self, Category.self, Transaction.self, Currency.self])
+        let schema = Schema([User.self, Account.self, AccountGroup.self, Category.self, Transaction.self, Currency.self, Loan.self, LoanPayment.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
             return try ModelContainer(for: schema, configurations: [config])

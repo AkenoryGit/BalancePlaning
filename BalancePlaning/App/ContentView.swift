@@ -40,6 +40,11 @@ struct ContentView: View {
                         Label("Аналитика", systemImage: "chart.bar.fill")
                     }
 
+                LoansView()
+                    .tabItem {
+                        Label("Кредиты", systemImage: "creditcard.fill")
+                    }
+
                 ProfileView(isLogged: $isLoggedIn)
                     .tabItem {
                         Label("Профиль", systemImage: "person.fill")

@@ -26,6 +26,8 @@ struct TransactionsView: View {
     @Query private var allCategories: [Category]
     @Query private var allGroups: [AccountGroup]
     @Query private var allAccounts: [Account]
+    @Query private var allLoans: [Loan]
+    @Query private var allLoanPayments: [LoanPayment]
 
     private var userCurrencies: [Currency] {
         guard let uid = currentUserId() else { return [] }
@@ -42,7 +44,7 @@ struct TransactionsView: View {
 
     private var userTransactions: [Transaction] {
         guard let userId = currentUserId() else { return [] }
-        return allTransactions.filter { $0.userId == userId }
+        return allTransactions.filter { $0.userId == userId && $0.type != .correction }
     }
 
     private var userAccounts: [Account] {
@@ -100,109 +102,129 @@ struct TransactionsView: View {
 
     private var accountService: AccountService { AccountService(context: context) }
 
+    private var combinedBalances: [(code: String, amount: Decimal)] {
+        guard let uid = currentUserId() else { return [] }
+        var dict: [String: Decimal] = [:]
+        for entry in accountService.totalBalancePerCurrency(at: date) {
+            dict[entry.code, default: .zero] += entry.amount
+        }
+        let loanSvc = LoanService(context: context)
+        let userLoans = allLoans.filter { $0.userId == uid && !$0.isArchived && $0.isIncludedInBalance }
+        for loan in userLoans {
+            let payments = allLoanPayments.filter { $0.loanId == loan.id && $0.date <= date }
+            let remaining = loanSvc.remainingPrincipal(for: loan, payments: payments)
+            dict[loan.currency, default: .zero] -= remaining
+        }
+        let predefinedOrder = CurrencyInfo.predefined.map { $0.code }
+        return dict.sorted { a, b in
+            let ai = predefinedOrder.firstIndex(of: a.key) ?? Int.max
+            let bi = predefinedOrder.firstIndex(of: b.key) ?? Int.max
+            return ai != bi ? ai < bi : a.key < b.key
+        }.map { (code: $0.key, amount: $0.value) }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
 
-                    // Онбординг для нового пользователя
                     if hasNoAccounts {
                         OnboardingCard()
                             .padding(.horizontal)
-                    }
-
-                    // Карточка баланса
-                    BalanceCard(
-                        balances: accountService.totalBalancePerCurrency(at: date),
-                        date: $date,
-                        showNavigation: viewMode == .day,
-                        customCurrencies: userCurrencies,
-                        onDateTap: { showDatePicker = true },
-                        onBalanceTap: { showAccountsSheet = true }
-                    )
-                    .padding(.horizontal)
-
-                    // Итоги за день (только в режиме «за день»)
-                    if viewMode == .day {
-                        HStack(alignment: .top, spacing: 12) {
-                            MultiCurrencyPill(label: "Доходы", entries: dailyIncomeByCurrency,
-                                             color: AppTheme.Colors.income, customCurrencies: userCurrencies)
-                            MultiCurrencyPill(label: "Расходы", entries: dailyExpenseByCurrency,
-                                             color: AppTheme.Colors.expense, customCurrencies: userCurrencies)
-                        }
-                        .padding(.horizontal)
-                    }
-
-                    // Переключатель режима
-                    Picker("", selection: $viewMode) {
-                        ForEach(TransactionViewMode.allCases, id: \.self) { mode in
-                            Text(mode.label).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-
-                    // Строка фильтра (в режиме «За период»)
-                    if viewMode == .period {
-                        Button { showFilterSheet = true } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "line.3.horizontal.decrease.circle.fill")
-                                    .foregroundStyle(AppTheme.Colors.accent)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    HStack(spacing: 4) {
-                                        Text(filter.startDate, format: .dateTime.day(.twoDigits).month(.twoDigits).year())
-                                        Text("—")
-                                        Text(filter.endDate, format: .dateTime.day(.twoDigits).month(.twoDigits).year())
-                                    }
-                                    .font(.subheadline.bold())
-                                    .foregroundStyle(.primary)
-                                    if filter.activeFilterCount > 0 {
-                                        Text("Ещё \(filter.activeFilterCount) фильтр\(filterSuffix(filter.activeFilterCount))")
-                                            .font(.caption)
-                                            .foregroundStyle(AppTheme.Colors.accent)
-                                    }
-                                }
-                                Spacer()
-                                Text("Изменить")
-                                    .font(.caption)
-                                    .foregroundStyle(AppTheme.Colors.accent)
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .cardStyle()
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal)
-                    }
-
-                    // Список транзакций
-                    if shownTransactions.isEmpty {
-                        EmptyTransactionsPlaceholder(viewMode: viewMode)
-                            .padding(.top, 40)
+                            .padding(.top, 20)
                     } else {
-                        LazyVStack(spacing: 10) {
-                            ForEach(shownTransactions) { transaction in
-                                TransactionCard(transaction: transaction,
-                                                allCategories: userCategories,
-                                                allGroups: userGroups,
-                                                showDate: viewMode != .day)
-                                    .padding(.horizontal)
-                                    .onTapGesture { selectedTransaction = transaction }
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                        Button(role: .destructive) {
-                                            let service = TransactionService(context: context)
-                                            pendingDeleteClosure = { service.deleteTransaction(transaction) }
-                                            withAnimation(.default, completionCriteria: .logicallyComplete) {
-                                                pendingDeleteId = transaction.persistentModelID
-                                            } completion: {
-                                                pendingDeleteClosure?()
-                                                pendingDeleteClosure = nil
-                                                pendingDeleteId = nil
-                                            }
-                                        } label: {
-                                            Label("Удалить", systemImage: "trash")
+                        BalanceCard(
+                            balances: combinedBalances,
+                            date: $date,
+                            showNavigation: viewMode == .day,
+                            customCurrencies: userCurrencies,
+                            onDateTap: { showDatePicker = true },
+                            onBalanceTap: { showAccountsSheet = true }
+                        )
+                        .padding(.horizontal)
+
+                        // Итоги за день (только в режиме «за день»)
+                        if viewMode == .day {
+                            HStack(alignment: .top, spacing: 12) {
+                                MultiCurrencyPill(label: "Доходы", entries: dailyIncomeByCurrency,
+                                                 color: AppTheme.Colors.income, customCurrencies: userCurrencies)
+                                MultiCurrencyPill(label: "Расходы", entries: dailyExpenseByCurrency,
+                                                 color: AppTheme.Colors.expense, customCurrencies: userCurrencies)
+                            }
+                            .padding(.horizontal)
+                        }
+
+                        // Переключатель режима
+                        Picker("", selection: $viewMode) {
+                            ForEach(TransactionViewMode.allCases, id: \.self) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal)
+
+                        // Строка фильтра (в режиме «За период»)
+                        if viewMode == .period {
+                            Button { showFilterSheet = true } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                                        .foregroundStyle(AppTheme.Colors.accent)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        HStack(spacing: 4) {
+                                            Text(filter.startDate, format: .dateTime.day(.twoDigits).month(.twoDigits).year())
+                                            Text("—")
+                                            Text(filter.endDate, format: .dateTime.day(.twoDigits).month(.twoDigits).year())
+                                        }
+                                        .font(.subheadline.bold())
+                                        .foregroundStyle(.primary)
+                                        if filter.activeFilterCount > 0 {
+                                            Text("Ещё \(filter.activeFilterCount) фильтр\(filterSuffix(filter.activeFilterCount))")
+                                                .font(.caption)
+                                                .foregroundStyle(AppTheme.Colors.accent)
                                         }
                                     }
+                                    Spacer()
+                                    Text("Изменить")
+                                        .font(.caption)
+                                        .foregroundStyle(AppTheme.Colors.accent)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .cardStyle()
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal)
+                        }
+
+                        // Список транзакций
+                        if shownTransactions.isEmpty {
+                            EmptyTransactionsPlaceholder(viewMode: viewMode)
+                                .padding(.top, 40)
+                        } else {
+                            LazyVStack(spacing: 10) {
+                                ForEach(shownTransactions) { transaction in
+                                    TransactionCard(transaction: transaction,
+                                                    allCategories: userCategories,
+                                                    allGroups: userGroups,
+                                                    showDate: viewMode != .day)
+                                        .padding(.horizontal)
+                                        .onTapGesture { selectedTransaction = transaction }
+                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                            Button(role: .destructive) {
+                                                let service = TransactionService(context: context)
+                                                pendingDeleteClosure = { service.deleteTransaction(transaction) }
+                                                withAnimation(.default, completionCriteria: .logicallyComplete) {
+                                                    pendingDeleteId = transaction.persistentModelID
+                                                } completion: {
+                                                    pendingDeleteClosure?()
+                                                    pendingDeleteClosure = nil
+                                                    pendingDeleteId = nil
+                                                }
+                                            } label: {
+                                                Label("Удалить", systemImage: "trash")
+                                            }
+                                        }
+                                }
                             }
                         }
                     }

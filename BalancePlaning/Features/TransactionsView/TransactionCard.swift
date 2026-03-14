@@ -42,13 +42,26 @@ struct TransactionCard: View {
         }
     }
 
+    private var isLoanPayment: Bool { transaction.loanId != nil }
+
     private var title: String {
+        if isLoanPayment {
+            return transaction.note.isEmpty ? "Платёж по кредиту" : transaction.note
+        }
         switch transaction.type {
         case .income:      return transaction.fromCategory?.name ?? "Пополнение"
         case .expense:     return transaction.toCategory?.name ?? "Расход"
         case .transaction: return "Перевод"
         case .correction:  return "Корректировка"
         }
+    }
+
+    private var displayIcon: String {
+        isLoanPayment ? "creditcard.fill" : transaction.type.icon
+    }
+
+    private var displayColor: Color {
+        isLoanPayment ? Color(hex: "E74C3C") : transaction.type.color
     }
 
     private var subtitle: String {
@@ -103,11 +116,11 @@ struct TransactionCard: View {
 
             HStack(spacing: 14) {
                 // Иконка типа
-                Image(systemName: transaction.type.icon)
+                Image(systemName: displayIcon)
                     .font(.title3)
-                    .foregroundStyle(transaction.type.color)
+                    .foregroundStyle(displayColor)
                     .frame(width: 44, height: 44)
-                    .background(transaction.type.color.opacity(0.12))
+                    .background(displayColor.opacity(0.12))
                     .clipShape(Circle())
 
                 // Название и счёт
@@ -120,7 +133,7 @@ struct TransactionCard: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    if !transaction.note.isEmpty {
+                    if !transaction.note.isEmpty && !isLoanPayment {
                         Text(transaction.note)
                             .font(.caption)
                             .foregroundStyle(.tertiary)
@@ -133,8 +146,12 @@ struct TransactionCard: View {
                 // Сумма и время
                 VStack(alignment: .trailing, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 1) {
-                        if !transaction.type.amountPrefix.isEmpty {
+                        if !isLoanPayment, !transaction.type.amountPrefix.isEmpty {
                             Text(transaction.type.amountPrefix)
+                                .font(.subheadline.bold())
+                        }
+                        if isLoanPayment {
+                            Text("−")
                                 .font(.subheadline.bold())
                         }
                         Text(transaction.amount, format: .number.precision(.fractionLength(0...2)))
@@ -142,7 +159,7 @@ struct TransactionCard: View {
                         Text(currencySymbol)
                             .font(.caption.bold())
                     }
-                    .foregroundStyle(transaction.type.color)
+                    .foregroundStyle(displayColor)
 
                     if showDate {
                         Text(transaction.date, format: .dateTime

@@ -15,6 +15,7 @@ struct TransactionsCategoryView: View {
     @State private var isTransactionPresented = false
     @State private var isExpensePresented = false
     @State private var isIncomePresented = false
+    @State private var isLoanPaymentPresented = false
 
     @Binding var isRootPresented: Bool
 
@@ -53,6 +54,13 @@ struct TransactionsCategoryView: View {
                     title: "Пополнение",
                     subtitle: "Доход, возврат средств"
                 ) { isIncomePresented = true }
+
+                TransactionTypeCard(
+                    color: Color(hex: "E74C3C"),
+                    icon: "creditcard.fill",
+                    title: "Кредит",
+                    subtitle: "Плановый или досрочный платёж"
+                ) { isLoanPaymentPresented = true }
             }
             .padding(.horizontal)
 
@@ -72,6 +80,9 @@ struct TransactionsCategoryView: View {
         }
         .sheet(isPresented: $isIncomePresented) {
             AddIncomeView(isRootPresented: $isRootPresented, transactionService: transactionService)
+        }
+        .sheet(isPresented: $isLoanPaymentPresented) {
+            LoanPaymentFromMainSheet(isRootPresented: $isRootPresented)
         }
     }
 }

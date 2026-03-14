@@ -25,6 +25,7 @@ class Transaction {
     var recurringInterval: RecurringInterval?
     var recurringIntervalDays: Int?    // для everyNDays
     var note: String = ""
+    var loanId: UUID? = nil            // non-nil → транзакция создана из платежа по кредиту
 
     init(fromAccount: Account? = nil, fromCategory: Category? = nil,
          toAccount: Account? = nil, toCategory: Category? = nil,
@@ -34,7 +35,8 @@ class Transaction {
          recurringGroupId: UUID? = nil,
          recurringInterval: RecurringInterval? = nil,
          recurringIntervalDays: Int? = nil,
-         note: String = "") {
+         note: String = "",
+         loanId: UUID? = nil) {
         self.fromAccount = fromAccount
         self.fromCategory = fromCategory
         self.toAccount = toAccount
@@ -49,6 +51,7 @@ class Transaction {
         self.recurringInterval = recurringInterval
         self.recurringIntervalDays = recurringIntervalDays
         self.note = note
+        self.loanId = loanId
     }
 }
 

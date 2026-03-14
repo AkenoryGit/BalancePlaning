@@ -112,12 +112,12 @@ class AccountService {
             }
 
             let outgoing = filtered
-                .filter { ($0.type == .transaction || $0.type == .expense || $0.type == .correction) && $0.fromAccount == account }
+                .filter { ($0.type == .transaction || $0.type == .expense || $0.type == .correction) && $0.fromAccount?.id == account.id }
                 .reduce(Decimal.zero) { $0 + $1.amount }
 
             // Для cross-currency переводов используем toAmount (сумма в валюте принимающего счёта)
             let incoming = filtered
-                .filter { ($0.type == .transaction || $0.type == .income || $0.type == .correction) && $0.toAccount == account }
+                .filter { ($0.type == .transaction || $0.type == .income || $0.type == .correction) && $0.toAccount?.id == account.id }
                 .reduce(Decimal.zero) { $0 + ($1.toAmount ?? $1.amount) }
 
             return incoming - outgoing
@@ -148,7 +148,7 @@ class AccountService {
 
     // Баланс сгруппированный по валютам (для BalanceCard)
     func totalBalancePerCurrency(at date: Date) -> [(code: String, amount: Decimal)] {
-        let accounts = fetchUserAccounts()
+        let accounts = fetchUserAccounts().filter { $0.isIncludedInBalance }
         var dict: [String: Decimal] = [:]
         for account in accounts {
             dict[account.currency, default: .zero] += balance(for: account, at: date)

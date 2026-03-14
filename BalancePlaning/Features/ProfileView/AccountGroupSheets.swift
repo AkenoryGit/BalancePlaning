@@ -30,7 +30,7 @@ struct AddAccountSheet: View {
 
     private var nameIsValid: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var balance: Decimal? {
-        balanceString.isEmpty ? .zero : Decimal(string: balanceString.replacingOccurrences(of: ",", with: "."))
+        Decimal(string: balanceString.replacingOccurrences(of: ",", with: "."))
     }
     private var balanceIsValid: Bool { balance != nil }
     private var selectedGroupName: String {
@@ -55,9 +55,9 @@ struct AddAccountSheet: View {
                            keyboard: .default)
                     .onChange(of: name) { _, _ in if didAttemptSave { didAttemptSave = false } }
 
-                inputField(icon: "banknote", placeholder: "Начальный баланс (необязательно)",
+                inputField(icon: "banknote", placeholder: "Начальный баланс",
                            text: $balanceString,
-                           hasError: didAttemptSave && !balanceIsValid, errorText: "Введите корректную сумму",
+                           hasError: didAttemptSave && !balanceIsValid, errorText: "Введите начальный баланс (можно 0 или отрицательный)",
                            keyboard: .decimalPad)
                     .onChange(of: balanceString) { _, _ in if didAttemptSave { didAttemptSave = false } }
 

@@ -16,6 +16,7 @@ class Account {
     var balance: Decimal
     var groupId: UUID? = nil
     var currency: String = "RUB"
+    var isIncludedInBalance: Bool = true
 
     init(id: UUID = UUID(), userId: UUID, name: String, balance: Decimal, groupId: UUID? = nil, currency: String = "RUB") {
         self.id = id
