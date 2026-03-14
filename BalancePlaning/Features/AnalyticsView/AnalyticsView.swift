@@ -17,10 +17,22 @@ struct AnalyticsView: View {
     }()
 
     @Query private var allTransactions: [Transaction]
+    @Query private var allCategories: [Category]
+    @Query private var allCurrencies: [Currency]
+
+    private var accountService: AccountService { AccountService(context: context) }
 
     private var userTransactions: [Transaction] {
         guard let userId = currentUserId() else { return [] }
         return allTransactions.filter { $0.userId == userId }
+    }
+
+    private var futureTransactions: [Transaction] {
+        userTransactions.filter { $0.date > Date() }
+    }
+
+    private var currentBalanceByCurrency: [(code: String, amount: Decimal)] {
+        accountService.totalBalancePerCurrency(at: Date())
     }
 
     private var monthlyTransactions: [Transaction] {
@@ -29,26 +41,124 @@ struct AnalyticsView: View {
         }
     }
 
-    private var monthlyIncome: Decimal {
-        monthlyTransactions.filter { $0.type == .income }.reduce(.zero) { $0 + $1.amount }
+    /// Доходы по валютам: код → сумма
+    private var monthlyIncomeByCurrency: [(code: String, amount: Decimal)] {
+        var dict: [String: Decimal] = [:]
+        for t in monthlyTransactions where t.type == .income {
+            let code = t.toAccount?.currency ?? "RUB"
+            dict[code, default: .zero] += t.amount
+        }
+        return dict.map { (code: $0.key, amount: $0.value) }
+                   .sorted { $0.amount > $1.amount }
     }
 
-    private var monthlyExpense: Decimal {
-        monthlyTransactions.filter { $0.type == .expense }.reduce(.zero) { $0 + $1.amount }
-    }
-
-    private var balance: Decimal { monthlyIncome - monthlyExpense }
-
-    /// Топ-5 категорий расходов
-    private var expenseByCategory: [(name: String, amount: Double)] {
+    /// Расходы по валютам: код → сумма
+    private var monthlyExpenseByCurrency: [(code: String, amount: Decimal)] {
         var dict: [String: Decimal] = [:]
         for t in monthlyTransactions where t.type == .expense {
-            let cat = t.toCategory?.name ?? "Другое"
-            dict[cat, default: .zero] += t.amount
+            let code = t.fromAccount?.currency ?? "RUB"
+            dict[code, default: .zero] += t.amount
         }
-        return dict
-            .map { (name: $0.key, amount: Double(truncating: NSDecimalNumber(decimal: $0.value))) }
-            .sorted { $0.amount > $1.amount }
+        return dict.map { (code: $0.key, amount: $0.value) }
+                   .sorted { $0.amount > $1.amount }
+    }
+
+    /// Баланс по валютам (доход − расход)
+    private var monthlyBalanceByCurrency: [(code: String, amount: Decimal)] {
+        var dict: [String: Decimal] = [:]
+        for entry in monthlyIncomeByCurrency  { dict[entry.code, default: .zero] += entry.amount }
+        for entry in monthlyExpenseByCurrency { dict[entry.code, default: .zero] -= entry.amount }
+        return dict.map { (code: $0.key, amount: $0.value) }
+                   .sorted { abs($0.amount) > abs($1.amount) }
+    }
+
+    /// Топ расходов, сгруппированных по корневой категории
+    private var expenseByCategoryGroup: [CategoryExpenseGroup] {
+        // Сумма по каждой категории (id → amount)
+        var amountById: [UUID: Decimal] = [:]
+        for t in monthlyTransactions where t.type == .expense {
+            guard let cat = t.toCategory else {
+                // нет категории — учитываем отдельно
+                continue
+            }
+            amountById[cat.id, default: .zero] += t.amount
+        }
+
+        // Резолвим корневую категорию и накапливаем
+        var rootTotals: [UUID: Decimal] = [:]
+        var childrenMap: [UUID: [UUID: Decimal]] = [:]
+
+        for (catId, amount) in amountById {
+            guard let cat = allCategories.first(where: { $0.id == catId }) else { continue }
+            let rootId = cat.parentId ?? cat.id
+            rootTotals[rootId, default: .zero] += amount
+            if cat.parentId != nil {
+                childrenMap[rootId, default: [:]][catId, default: .zero] += amount
+            }
+        }
+
+        let toDouble: (Decimal) -> Double = { Double(truncating: NSDecimalNumber(decimal: $0)) }
+
+        return rootTotals
+            .compactMap { rootId, total -> CategoryExpenseGroup? in
+                guard let root = allCategories.first(where: { $0.id == rootId }) else { return nil }
+                let subs = (childrenMap[rootId] ?? [:])
+                    .compactMap { childId, amt -> (name: String, amount: Double)? in
+                        guard let child = allCategories.first(where: { $0.id == childId }) else { return nil }
+                        return (name: child.name, amount: toDouble(amt))
+                    }
+                    .sorted { $0.amount > $1.amount }
+                return CategoryExpenseGroup(
+                    rootName: root.name,
+                    rootColor: CategoryColors.resolve(root.color),
+                    total: toDouble(total),
+                    children: subs
+                )
+            }
+            .sorted { $0.total > $1.total }
+            .prefix(5)
+            .map { $0 }
+    }
+
+    /// Топ доходов, сгруппированных по корневой категории
+    private var incomeByCategoryGroup: [CategoryExpenseGroup] {
+        var amountById: [UUID: Decimal] = [:]
+        for t in monthlyTransactions where t.type == .income {
+            guard let cat = t.fromCategory else { continue }
+            amountById[cat.id, default: .zero] += t.amount
+        }
+
+        var rootTotals: [UUID: Decimal] = [:]
+        var childrenMap: [UUID: [UUID: Decimal]] = [:]
+
+        for (catId, amount) in amountById {
+            guard let cat = allCategories.first(where: { $0.id == catId }) else { continue }
+            let rootId = cat.parentId ?? cat.id
+            rootTotals[rootId, default: .zero] += amount
+            if cat.parentId != nil {
+                childrenMap[rootId, default: [:]][catId, default: .zero] += amount
+            }
+        }
+
+        let toDouble: (Decimal) -> Double = { Double(truncating: NSDecimalNumber(decimal: $0)) }
+
+        return rootTotals
+            .compactMap { rootId, total -> CategoryExpenseGroup? in
+                guard let root = allCategories.first(where: { $0.id == rootId }) else { return nil }
+                let subs = (childrenMap[rootId] ?? [:])
+                    .compactMap { childId, amt -> (name: String, amount: Double)? in
+                        guard let child = allCategories.first(where: { $0.id == childId }) else { return nil }
+                        return (name: child.name, amount: toDouble(amt))
+                    }
+                    .sorted { $0.amount > $1.amount }
+                return CategoryExpenseGroup(
+                    rootName: root.name,
+                    rootColor: CategoryColors.resolve(root.color),
+                    total: toDouble(total),
+                    children: subs
+                )
+            }
+            .sorted { $0.total > $1.total }
             .prefix(5)
             .map { $0 }
     }
@@ -91,29 +201,57 @@ struct AnalyticsView: View {
                         .padding(.horizontal)
 
                     // Баланс за месяц
-                    VStack(spacing: 4) {
+                    VStack(spacing: 6) {
                         Text("Баланс за месяц")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        HStack(alignment: .firstTextBaseline, spacing: 3) {
-                            Text(balance >= 0 ? "+" : "")
+                        if monthlyBalanceByCurrency.isEmpty {
+                            Text("0 ₽")
                                 .font(.title.bold())
-                                .foregroundStyle(balance >= 0 ? AppTheme.Colors.income : AppTheme.Colors.expense)
-                            Text(balance, format: .number.precision(.fractionLength(0...2)))
-                                .font(.title.bold())
-                                .foregroundStyle(balance >= 0 ? AppTheme.Colors.income : AppTheme.Colors.expense)
-                            Text("₽")
-                                .font(.title3.bold())
-                                .foregroundStyle(balance >= 0 ? AppTheme.Colors.income : AppTheme.Colors.expense)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(monthlyBalanceByCurrency, id: \.code) { entry in
+                                let color = entry.amount >= 0 ? AppTheme.Colors.income : AppTheme.Colors.expense
+                                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                                    Text(entry.amount >= 0 ? "+" : "")
+                                        .font(monthlyBalanceByCurrency.count == 1 ? .title.bold() : .title2.bold())
+                                        .foregroundStyle(color)
+                                    Text(entry.amount, format: .number.precision(.fractionLength(0...2)))
+                                        .font(monthlyBalanceByCurrency.count == 1 ? .title.bold() : .title2.bold())
+                                        .foregroundStyle(color)
+                                    Text(CurrencyInfo.symbol(for: entry.code, custom: allCurrencies))
+                                        .font(monthlyBalanceByCurrency.count == 1 ? .title3.bold() : .headline.bold())
+                                        .foregroundStyle(color)
+                                }
+                            }
                         }
                     }
                     .padding(.vertical, 8)
 
                     // Доходы / Расходы
-                    HStack(spacing: 12) {
-                        SummaryPill(label: "Доходы", amount: monthlyIncome, color: AppTheme.Colors.income)
-                        SummaryPill(label: "Расходы", amount: monthlyExpense, color: AppTheme.Colors.expense)
+                    HStack(alignment: .top, spacing: 12) {
+                        MultiCurrencyPill(
+                            label: "Доходы",
+                            entries: monthlyIncomeByCurrency,
+                            color: AppTheme.Colors.income,
+                            customCurrencies: allCurrencies
+                        )
+                        MultiCurrencyPill(
+                            label: "Расходы",
+                            entries: monthlyExpenseByCurrency,
+                            color: AppTheme.Colors.expense,
+                            customCurrencies: allCurrencies
+                        )
                     }
+                    .padding(.horizontal)
+
+                    // Прогноз баланса
+                    ForecastSection(
+                        startBalances: currentBalanceByCurrency,
+                        futureTransactions: futureTransactions,
+                        customCurrencies: allCurrencies
+                    )
+                    .cardStyle()
                     .padding(.horizontal)
 
                     // Бар-чарт по дням
@@ -152,7 +290,7 @@ struct AnalyticsView: View {
                     }
 
                     // Топ расходов по категориям
-                    if !expenseByCategory.isEmpty {
+                    if !expenseByCategoryGroup.isEmpty {
                         VStack(alignment: .leading, spacing: 0) {
                             Text("Топ расходов")
                                 .font(.headline)
@@ -160,12 +298,12 @@ struct AnalyticsView: View {
                                 .padding(.top, 16)
                                 .padding(.bottom, 8)
 
-                            let maxAmount = expenseByCategory.first?.amount ?? 1
+                            let maxAmount = expenseByCategoryGroup.first?.total ?? 1
 
-                            ForEach(Array(expenseByCategory.enumerated()), id: \.element.name) { index, item in
+                            ForEach(Array(expenseByCategoryGroup.enumerated()), id: \.element.rootName) { index, group in
                                 VStack(spacing: 0) {
+                                    // Строка корневой категории
                                     HStack(spacing: 12) {
-                                        // Номер
                                         Text("\(index + 1)")
                                             .font(.caption.bold())
                                             .foregroundStyle(.secondary)
@@ -173,35 +311,64 @@ struct AnalyticsView: View {
 
                                         VStack(alignment: .leading, spacing: 4) {
                                             HStack {
-                                                Text(item.name)
-                                                    .font(.subheadline)
+                                                Text(group.rootName)
+                                                    .font(.subheadline.bold())
                                                 Spacer()
                                                 HStack(alignment: .firstTextBaseline, spacing: 2) {
-                                                    Text(item.amount, format: .number.precision(.fractionLength(0...2)))
+                                                    Text(group.total, format: .number.precision(.fractionLength(0...2)))
                                                         .font(.subheadline.bold())
                                                     Text("₽")
                                                         .font(.caption.bold())
                                                         .foregroundStyle(.secondary)
                                                 }
                                             }
-                                            // Прогресс-бар
                                             GeometryReader { geo in
+                                                let barColor = group.rootColor ?? AppTheme.Colors.expense
                                                 ZStack(alignment: .leading) {
                                                     RoundedRectangle(cornerRadius: 3)
-                                                        .fill(AppTheme.Colors.expense.opacity(0.12))
+                                                        .fill(barColor.opacity(0.12))
                                                         .frame(height: 6)
                                                     RoundedRectangle(cornerRadius: 3)
-                                                        .fill(AppTheme.Colors.expense)
-                                                        .frame(width: geo.size.width * CGFloat(item.amount / maxAmount), height: 6)
+                                                        .fill(barColor)
+                                                        .frame(width: geo.size.width * CGFloat(group.total / maxAmount), height: 6)
                                                 }
                                             }
                                             .frame(height: 6)
                                         }
                                     }
                                     .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
+                                    .padding(.top, 12)
+                                    .padding(.bottom, group.children.isEmpty ? 12 : 6)
 
-                                    if index < expenseByCategory.count - 1 {
+                                    // Подкатегории
+                                    if !group.children.isEmpty {
+                                        ForEach(group.children, id: \.name) { child in
+                                            HStack(spacing: 12) {
+                                                // отступ под номер
+                                                Color.clear.frame(width: 18)
+
+                                                HStack {
+                                                    Text(child.name)
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                    Spacer()
+                                                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                                                        Text(child.amount, format: .number.precision(.fractionLength(0...2)))
+                                                            .font(.caption.bold())
+                                                            .foregroundStyle(.secondary)
+                                                        Text("₽")
+                                                            .font(.caption2.bold())
+                                                            .foregroundStyle(.tertiary)
+                                                    }
+                                                }
+                                            }
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 4)
+                                        }
+                                        .padding(.bottom, 8)
+                                    }
+
+                                    if index < expenseByCategoryGroup.count - 1 {
                                         Divider().padding(.leading, 46)
                                     }
                                 }
@@ -210,7 +377,95 @@ struct AnalyticsView: View {
                         }
                         .cardStyle()
                         .padding(.horizontal)
-                    } else {
+                    }
+
+                    // Топ доходов по категориям
+                    if !incomeByCategoryGroup.isEmpty {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("Топ доходов")
+                                .font(.headline)
+                                .padding(.horizontal, 16)
+                                .padding(.top, 16)
+                                .padding(.bottom, 8)
+
+                            let maxAmount = incomeByCategoryGroup.first?.total ?? 1
+
+                            ForEach(Array(incomeByCategoryGroup.enumerated()), id: \.element.rootName) { index, group in
+                                VStack(spacing: 0) {
+                                    HStack(spacing: 12) {
+                                        Text("\(index + 1)")
+                                            .font(.caption.bold())
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 18)
+
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            HStack {
+                                                Text(group.rootName)
+                                                    .font(.subheadline.bold())
+                                                Spacer()
+                                                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                                                    Text(group.total, format: .number.precision(.fractionLength(0...2)))
+                                                        .font(.subheadline.bold())
+                                                    Text("₽")
+                                                        .font(.caption.bold())
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                            }
+                                            GeometryReader { geo in
+                                                let barColor = group.rootColor ?? AppTheme.Colors.income
+                                                ZStack(alignment: .leading) {
+                                                    RoundedRectangle(cornerRadius: 3)
+                                                        .fill(barColor.opacity(0.12))
+                                                        .frame(height: 6)
+                                                    RoundedRectangle(cornerRadius: 3)
+                                                        .fill(barColor)
+                                                        .frame(width: geo.size.width * CGFloat(group.total / maxAmount), height: 6)
+                                                }
+                                            }
+                                            .frame(height: 6)
+                                        }
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.top, 12)
+                                    .padding(.bottom, group.children.isEmpty ? 12 : 6)
+
+                                    if !group.children.isEmpty {
+                                        ForEach(group.children, id: \.name) { child in
+                                            HStack(spacing: 12) {
+                                                Color.clear.frame(width: 18)
+                                                HStack {
+                                                    Text(child.name)
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                    Spacer()
+                                                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                                                        Text(child.amount, format: .number.precision(.fractionLength(0...2)))
+                                                            .font(.caption.bold())
+                                                            .foregroundStyle(.secondary)
+                                                        Text("₽")
+                                                            .font(.caption2.bold())
+                                                            .foregroundStyle(.tertiary)
+                                                    }
+                                                }
+                                            }
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 4)
+                                        }
+                                        .padding(.bottom, 8)
+                                    }
+
+                                    if index < incomeByCategoryGroup.count - 1 {
+                                        Divider().padding(.leading, 46)
+                                    }
+                                }
+                            }
+                            .padding(.bottom, 8)
+                        }
+                        .cardStyle()
+                        .padding(.horizontal)
+                    }
+
+                    if expenseByCategoryGroup.isEmpty && incomeByCategoryGroup.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "chart.pie")
                                 .font(.system(size: 52))
@@ -237,55 +492,3 @@ struct AnalyticsView: View {
     }
 }
 
-// MARK: - Модель для чарта
-
-struct DayAmount: Identifiable {
-    let id = UUID()
-    let date: Date
-    let amount: Double
-    let kind: String
-}
-
-// MARK: - Выбор месяца
-
-struct MonthSelector: View {
-    @Binding var selectedMonth: Date
-
-    var body: some View {
-        HStack {
-            Button {
-                selectedMonth = Calendar.current.date(byAdding: .month, value: -1, to: selectedMonth) ?? selectedMonth
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.subheadline.bold())
-                    .frame(width: 36, height: 36)
-                    .background(Color(.systemBackground))
-                    .clipShape(Circle())
-                    .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
-            }
-
-            Spacer()
-
-            Text(selectedMonth.formatted(.dateTime
-                .locale(Locale(identifier: "ru_RU"))
-                .month(.wide)
-                .year(.defaultDigits)
-            ))
-            .font(.headline)
-
-            Spacer()
-
-            Button {
-                selectedMonth = Calendar.current.date(byAdding: .month, value: +1, to: selectedMonth) ?? selectedMonth
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.subheadline.bold())
-                    .frame(width: 36, height: 36)
-                    .background(Color(.systemBackground))
-                    .clipShape(Circle())
-                    .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
-            }
-        }
-        .padding(.vertical, 4)
-    }
-}

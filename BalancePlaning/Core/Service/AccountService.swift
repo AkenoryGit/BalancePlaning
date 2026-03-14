@@ -16,15 +16,15 @@ class AccountService {
         self.context = context
     }
     
-    func addAccount(accountName: String, startBalance: Decimal) {
+    func addAccount(accountName: String, startBalance: Decimal, groupId: UUID? = nil, currency: String = "RUB") {
         guard let uuidString = currentUserId() else {
             print("Нет текущего пользователя")
             return
         }
-        let newAccount = Account(id: UUID(), userId: uuidString, name: accountName, balance: startBalance)
-        
+        let newAccount = Account(id: UUID(), userId: uuidString, name: accountName, balance: startBalance, groupId: groupId, currency: currency)
+
         context.insert(newAccount)
-        
+
         do {
             try context.save()
             print("Счет \(newAccount) был успешно создан!")
@@ -33,16 +33,41 @@ class AccountService {
             context.delete(newAccount)
         }
     }
+
+    func updateAccount(_ account: Account, name: String, groupId: UUID?) {
+        account.name = name
+        account.groupId = groupId
+        try? context.save()
+    }
     
     func deleteAccount(_ account: Account) {
         context.delete(account)
-        
-        do {
-            try context.save()
-            print("Счет \(account) был успешно удален!")
-        } catch {
-            print("Ошибка удаления счета: \(error)")
+        try? context.save()
+    }
+
+    /// Удаляет счёт и все транзакции, которые его используют
+    func deleteAccountWithTransactions(_ account: Account) {
+        let accountId = account.id
+        let linked = fetchUserTransactions().filter {
+            $0.fromAccount?.id == accountId || $0.toAccount?.id == accountId
         }
+        for t in linked { context.delete(t) }
+        context.delete(account)
+        try? context.save()
+    }
+
+    /// Удаляет счёт, обнуляя ссылки на него в существующих транзакциях
+    func deleteAccountDetachingTransactions(_ account: Account) {
+        let accountId = account.id
+        let linked = fetchUserTransactions().filter {
+            $0.fromAccount?.id == accountId || $0.toAccount?.id == accountId
+        }
+        for t in linked {
+            if t.fromAccount?.id == accountId { t.fromAccount = nil }
+            if t.toAccount?.id == accountId   { t.toAccount = nil }
+        }
+        context.delete(account)
+        try? context.save()
     }
     
     private func fetchUserTransactions() -> [Transaction] {
@@ -87,12 +112,13 @@ class AccountService {
             }
 
             let outgoing = filtered
-                .filter { ($0.type == .transaction || $0.type == .expense) && $0.fromAccount == account }
+                .filter { ($0.type == .transaction || $0.type == .expense || $0.type == .correction) && $0.fromAccount == account }
                 .reduce(Decimal.zero) { $0 + $1.amount }
 
+            // Для cross-currency переводов используем toAmount (сумма в валюте принимающего счёта)
             let incoming = filtered
-                .filter { ($0.type == .transaction || $0.type == .income) && $0.toAccount == account }
-                .reduce(Decimal.zero) { $0 + $1.amount }
+                .filter { ($0.type == .transaction || $0.type == .income || $0.type == .correction) && $0.toAccount == account }
+                .reduce(Decimal.zero) { $0 + ($1.toAmount ?? $1.amount) }
 
             return incoming - outgoing
         }
@@ -118,6 +144,21 @@ class AccountService {
     func totalBalance(at date: Date) -> Decimal {
         let accounts = fetchUserAccounts()
         return accounts.reduce(Decimal.zero) { $0 + balance(for: $1, at: date) }
+    }
+
+    // Баланс сгруппированный по валютам (для BalanceCard)
+    func totalBalancePerCurrency(at date: Date) -> [(code: String, amount: Decimal)] {
+        let accounts = fetchUserAccounts()
+        var dict: [String: Decimal] = [:]
+        for account in accounts {
+            dict[account.currency, default: .zero] += balance(for: account, at: date)
+        }
+        let predefinedOrder = CurrencyInfo.predefined.map { $0.code }
+        return dict.sorted { a, b in
+            let ai = predefinedOrder.firstIndex(of: a.key) ?? Int.max
+            let bi = predefinedOrder.firstIndex(of: b.key) ?? Int.max
+            return ai != bi ? ai < bi : a.key < b.key
+        }.map { (code: $0.key, amount: $0.value) }
     }
     
     private func fetchUserAccounts() -> [Account] {

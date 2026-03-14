@@ -13,8 +13,9 @@ import SwiftData
 final class User {
     @Attribute(.unique) var id: UUID
     @Attribute(.unique) var login: String
-    
-    init (login: String, id: UUID = UUID() ) {
+    var displayName: String = ""
+
+    init(login: String, id: UUID = UUID()) {
         self.login = login
         self.id = id
     }

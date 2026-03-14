@@ -44,6 +44,26 @@ final class KeychainManager {
         print("Пароль успешно сохранен")
     }
     
+    // функция обновления пароля
+    static func updatePassword(_ newPassword: String, for id: UUID) throws {
+        let data = newPassword.data(using: .utf8)!
+        let key = id.uuidString
+
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrAccount: key
+        ]
+        let attributes: [CFString: Any] = [
+            kSecValueData: data
+        ]
+
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        guard status == errSecSuccess else {
+            throw KeychainError.unowned(status: status)
+        }
+        print("Пароль успешно обновлён")
+    }
+
     // функция получения пароля пользователя
     static func getPassword(for id: UUID) throws -> Data? {
         // преобразуем id пользователя в String

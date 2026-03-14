@@ -14,11 +14,15 @@ class Account {
     var userId: UUID
     var name: String
     var balance: Decimal
-    
-    init(id: UUID, userId: UUID, name: String, balance: Decimal) {
+    var groupId: UUID? = nil
+    var currency: String = "RUB"
+
+    init(id: UUID = UUID(), userId: UUID, name: String, balance: Decimal, groupId: UUID? = nil, currency: String = "RUB") {
         self.id = id
         self.userId = userId
         self.name = name
         self.balance = balance
+        self.groupId = groupId
+        self.currency = currency
     }
 }

@@ -16,46 +16,54 @@ class Transaction {
     var toCategory: Category?
     var userId: UUID
     var amount: Decimal
+    var toAmount: Decimal? = nil       // для конвертации валют: сумма зачисления в валюте toAccount
     var date: Date
     var type: TransactionType
-    var priority: TransactionPriority = TransactionPriority.normal
+    var priority: TransactionPriority? = nil
 
     var recurringGroupId: UUID?        // nil = обычная транзакция, UUID = часть расписания
     var recurringInterval: RecurringInterval?
     var recurringIntervalDays: Int?    // для everyNDays
+    var note: String = ""
 
     init(fromAccount: Account? = nil, fromCategory: Category? = nil,
          toAccount: Account? = nil, toCategory: Category? = nil,
-         userId: UUID, amount: Decimal, date: Date, type: TransactionType,
-         priority: TransactionPriority = .normal,
+         userId: UUID, amount: Decimal, toAmount: Decimal? = nil,
+         date: Date, type: TransactionType,
+         priority: TransactionPriority? = nil,
          recurringGroupId: UUID? = nil,
          recurringInterval: RecurringInterval? = nil,
-         recurringIntervalDays: Int? = nil) {
+         recurringIntervalDays: Int? = nil,
+         note: String = "") {
         self.fromAccount = fromAccount
         self.fromCategory = fromCategory
         self.toAccount = toAccount
         self.toCategory = toCategory
         self.userId = userId
         self.amount = amount
+        self.toAmount = toAmount
         self.date = date
         self.type = type
         self.priority = priority
         self.recurringGroupId = recurringGroupId
         self.recurringInterval = recurringInterval
         self.recurringIntervalDays = recurringIntervalDays
+        self.note = note
     }
 }
 
 enum TransactionType: String, Codable {
     case transaction = "Transaction"
-    case expense = "Expense"
-    case income = "Income"
-    
+    case expense     = "Expense"
+    case income      = "Income"
+    case correction  = "Correction"
+
     var displayName: String {
         switch self {
         case .transaction: return "Перевод"
-        case .expense: return "Расход"
-        case .income: return "Пополнение"
+        case .expense:     return "Расход"
+        case .income:      return "Пополнение"
+        case .correction:  return "Корректировка"
         }
     }
 }

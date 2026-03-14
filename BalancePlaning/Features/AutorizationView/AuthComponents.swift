@@ -25,7 +25,7 @@ struct AuthTextField: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .background(AppTheme.Colors.pageBackground)
+        .background(Color(.tertiarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -63,7 +63,7 @@ struct AuthSecureField: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .background(AppTheme.Colors.pageBackground)
+        .background(Color(.tertiarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }

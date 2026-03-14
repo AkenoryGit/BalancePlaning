@@ -10,61 +10,68 @@ struct ProfileView: View {
     @Environment(\.modelContext) private var context
     @Binding var isLogged: Bool
 
-    @State private var showAddAccountSheet: Bool = false
+    @Query private var allCurrencies: [Currency]
     @State private var showAddCategorySheet: Bool = false
-    @State private var accountName: String = ""
-    @State private var startBalance: String = ""
+    @State private var showAddCurrencySheet: Bool = false
+    @State private var showProfileDetail: Bool = false
     @State private var type: CategoryType = .expense
 
     var userService: UserService { UserService(context: context) }
+
+    private var userCurrencies: [Currency] {
+        guard let uid = currentUserId() else { return [] }
+        return allCurrencies.filter { $0.userId == uid }
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
 
-                    // Карточка пользователя
+                    // Карточка пользователя (кликабельная)
                     if let user = userService.getCurrentUser() {
-                        HStack(spacing: 14) {
-                            // Аватар с первой буквой логина
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [AppTheme.Colors.accent, AppTheme.Colors.accentSecondary],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 52, height: 52)
-                                .overlay {
-                                    Text(String(user.login.prefix(1)).uppercased())
-                                        .font(.title2.bold())
-                                        .foregroundStyle(.white)
-                                }
+                        let visibleName = user.displayName.isEmpty ? user.login : user.displayName
+                        let avatarLetter = String(visibleName.prefix(1)).uppercased()
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Аккаунт")
+                        Button { showProfileDetail = true } label: {
+                            HStack(spacing: 14) {
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [AppTheme.Colors.accent, AppTheme.Colors.accentSecondary],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 52, height: 52)
+                                    .overlay {
+                                        Text(avatarLetter)
+                                            .font(.title2.bold())
+                                            .foregroundStyle(.white)
+                                    }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Аккаунт")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Text(visibleName)
+                                        .font(.headline)
+                                        .foregroundStyle(.primary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Text(user.login)
-                                    .font(.headline)
+                                    .foregroundStyle(.tertiary)
                             }
-                            Spacer()
+                            .padding(16)
+                            .cardStyle()
                         }
-                        .padding(16)
-                        .cardStyle()
+                        .buttonStyle(.plain)
                         .padding(.horizontal)
                     }
 
                     // Счета
-                    VStack(spacing: 8) {
-                        ProfileSectionHeader(title: "Мои счета") {
-                            showAddAccountSheet = true
-                            accountName = ""
-                            startBalance = ""
-                        }
-                        AccountsView()
-                    }
+                    AccountsView()
 
                     // Категории доходов
                     VStack(spacing: 8) {
@@ -82,6 +89,71 @@ struct ProfileView: View {
                             type = .expense
                         }
                         CategoriesView(isIncome: false)
+                    }
+
+                    // Мои валюты
+                    VStack(spacing: 8) {
+                        ProfileSectionHeader(title: "Мои валюты") {
+                            showAddCurrencySheet = true
+                        }
+                        if userCurrencies.isEmpty {
+                            Button { showAddCurrencySheet = true } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "plus.circle")
+                                        .font(.title3)
+                                        .foregroundStyle(AppTheme.Colors.accent)
+                                        .frame(width: 40, height: 40)
+                                        .background(AppTheme.Colors.accent.opacity(0.1))
+                                        .clipShape(Circle())
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Добавить валюту")
+                                            .font(.subheadline)
+                                            .foregroundStyle(AppTheme.Colors.accent)
+                                        Text("Доллар, евро, другие")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
+                                .padding(.horizontal, 14).padding(.vertical, 12)
+                                .cardStyle()
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 20)
+                        } else {
+                            VStack(spacing: 0) {
+                                ForEach(Array(userCurrencies.enumerated()), id: \.element.id) { index, currency in
+                                    if index > 0 {
+                                        Divider().padding(.leading, 60)
+                                    }
+                                    HStack(spacing: 12) {
+                                        Text(currency.symbol)
+                                            .font(.title3.bold())
+                                            .foregroundStyle(AppTheme.Colors.accent)
+                                            .frame(width: 40, height: 40)
+                                            .background(AppTheme.Colors.accent.opacity(0.1))
+                                            .clipShape(Circle())
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(currency.name).font(.subheadline)
+                                            Text(currency.code).font(.caption).foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        Button(role: .destructive) {
+                                            CurrencyService(context: context).deleteCurrency(currency)
+                                        } label: {
+                                            Image(systemName: "trash").foregroundStyle(.red)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.horizontal, 14).padding(.vertical, 10)
+                                }
+                            }
+                            .cardStyle()
+                            .padding(.horizontal, 20)
+                        }
                     }
 
                     // Кнопка выхода
@@ -107,11 +179,16 @@ struct ProfileView: View {
             .navigationTitle("Профиль")
             .navigationBarTitleDisplayMode(.large)
         }
-        .sheet(isPresented: $showAddAccountSheet) {
-            AddAccountSheet(accountName: $accountName, startBalance: $startBalance)
-        }
         .sheet(isPresented: $showAddCategorySheet) {
             AddCategorySheet(type: $type)
+        }
+        .sheet(isPresented: $showAddCurrencySheet) {
+            AddCurrencySheet()
+        }
+        .sheet(isPresented: $showProfileDetail) {
+            if let user = userService.getCurrentUser() {
+                ProfileDetailSheet(user: user)
+            }
         }
     }
 }

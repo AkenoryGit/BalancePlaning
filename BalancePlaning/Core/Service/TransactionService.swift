@@ -16,9 +16,10 @@ struct TransactionService {
         self.context = context
     }
     
-    func addTransactions(from: Account, to: Account, amount: Decimal, startDate: Date, endDate: Date? = nil,
+    func addTransactions(from: Account, to: Account, amount: Decimal, toAmount: Decimal? = nil,
+                         startDate: Date, endDate: Date? = nil,
                          interval: RecurringInterval? = nil, intervalDays: Int? = nil,
-                         priority: TransactionPriority = .normal) {
+                         priority: TransactionPriority = .normal, note: String = "") {
         guard let curUserID = currentUserId() else {
             print("Пользователь не найден")
             return
@@ -30,9 +31,11 @@ struct TransactionService {
                 toAccount: to,
                 userId: curUserID,
                 amount: amount,
+                toAmount: toAmount,
                 date: startDate,
                 type: .transaction,
-                priority: priority
+                priority: priority,
+                note: note
             ))
         } else {
             guard let endDate = endDate, let interval = interval else {
@@ -47,12 +50,14 @@ struct TransactionService {
                     toAccount: to,
                     userId: curUserID,
                     amount: amount,
+                    toAmount: toAmount,
                     date: day,
                     type: .transaction,
                     priority: priority,
                     recurringGroupId: groupId,
                     recurringInterval: interval,
-                    recurringIntervalDays: intervalDays
+                    recurringIntervalDays: intervalDays,
+                    note: note
                 ))
             }
         }
@@ -72,7 +77,7 @@ struct TransactionService {
     
     func addExpense(from: Account, to: Category, amount: Decimal, startDate: Date, endDate: Date? = nil,
                     interval: RecurringInterval? = nil, intervalDays: Int? = nil,
-                    priority: TransactionPriority = .normal) {
+                    priority: TransactionPriority = .normal, note: String = "") {
         guard let curUserID = currentUserId() else {
             print("Пользователь не найден")
             return
@@ -86,7 +91,8 @@ struct TransactionService {
                 amount: amount,
                 date: startDate,
                 type: .expense,
-                priority: priority
+                priority: priority,
+                note: note
             ))
         } else {
             guard let endDate = endDate, let interval = interval else {
@@ -106,7 +112,8 @@ struct TransactionService {
                     priority: priority,
                     recurringGroupId: groupId,
                     recurringInterval: interval,
-                    recurringIntervalDays: intervalDays
+                    recurringIntervalDays: intervalDays,
+                    note: note
                 ))
             }
         }
@@ -126,7 +133,7 @@ struct TransactionService {
     
     func addIncome(from: Category, to: Account, amount: Decimal, startDate: Date, endDate: Date? = nil,
                    interval: RecurringInterval? = nil, intervalDays: Int? = nil,
-                   priority: TransactionPriority = .normal) {
+                   priority: TransactionPriority = .normal, note: String = "") {
         guard let curUserID = currentUserId() else {
             print("Пользователь не найден")
             return
@@ -140,7 +147,8 @@ struct TransactionService {
                 amount: amount,
                 date: startDate,
                 type: .income,
-                priority: priority
+                priority: priority,
+                note: note
             ))
         } else {
             guard let endDate = endDate, let interval = interval else {
@@ -160,7 +168,8 @@ struct TransactionService {
                     priority: priority,
                     recurringGroupId: groupId,
                     recurringInterval: interval,
-                    recurringIntervalDays: intervalDays
+                    recurringIntervalDays: intervalDays,
+                    note: note
                 ))
             }
         }
@@ -178,6 +187,18 @@ struct TransactionService {
         }
     }
     
+    func addCorrection(account: Account, delta: Decimal, date: Date) {
+        guard let userId = currentUserId(), delta != 0 else { return }
+        let t: Transaction
+        if delta > 0 {
+            t = Transaction(toAccount: account, userId: userId, amount: delta, date: date, type: .correction)
+        } else {
+            t = Transaction(fromAccount: account, userId: userId, amount: abs(delta), date: date, type: .correction)
+        }
+        context.insert(t)
+        try? context.save()
+    }
+
     func deleteTransaction(_ transaction: Transaction) {
         context.delete(transaction)
 

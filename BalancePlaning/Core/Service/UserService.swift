@@ -20,6 +20,27 @@ class UserService {
         self.context = context
     }
     
+    func updateDisplayName(_ user: User, displayName: String) {
+        user.displayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        try? context.save()
+    }
+
+    // Проверяет текущий пароль, при совпадении обновляет на новый. Возвращает nil при успехе или текст ошибки.
+    func changePassword(for user: User, current: String, new: String) -> String? {
+        guard let data = try? KeychainManager.getPassword(for: user.id),
+              let stored = String(data: data, encoding: .utf8) else {
+            return "Ошибка чтения пароля"
+        }
+        guard stored == current else { return "Неверный текущий пароль" }
+        guard new.count >= 8 else { return "Новый пароль менее 8 символов" }
+        do {
+            try KeychainManager.updatePassword(new, for: user.id)
+            return nil
+        } catch {
+            return "Не удалось сохранить пароль"
+        }
+    }
+
     // узнаем текущего пользователя по сохраненному id пользователя в UserDefaults
     func getCurrentUser() -> User? {
         // вытаскиваем id текущего пользователя в формате String

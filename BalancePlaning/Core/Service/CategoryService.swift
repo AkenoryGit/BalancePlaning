@@ -18,13 +18,19 @@ class CategoryService {
     // MARK: - Создание
 
     /// Создаёт корневую категорию
-    func addCategory(categoryName: String, type: CategoryType) {
+    func addCategory(categoryName: String, type: CategoryType, color: String = "") {
         guard let userId = currentUserId() else {
             print("Нет текущего пользователя"); return
         }
-        let newCategory = Category(id: UUID(), userId: userId, name: categoryName, type: type)
+        let newCategory = Category(id: UUID(), userId: userId, name: categoryName, type: type, color: color)
         context.insert(newCategory)
         save("Категория \(categoryName) создана")
+    }
+
+    /// Обновляет цвет категории
+    func updateColor(_ category: Category, color: String) {
+        category.color = color
+        save()
     }
 
     /// Создаёт подкатегорию (глубина max 1: parent должен быть корневым)
@@ -125,6 +131,30 @@ class CategoryService {
         // Удаляем всё поддерево
         toDelete.forEach { context.delete($0) }
         save("Категория «\(category.name)» и её поддерево удалены")
+    }
+
+    // MARK: - Отображение в пикерах (статические хелперы для View)
+
+    /// Возвращает категории в порядке дерева: корень → его дети, затем следующий корень
+    static func sortedTree(from categories: [Category]) -> [Category] {
+        let roots = categories.filter { $0.isRoot }.sorted { $0.name < $1.name }
+        return roots.flatMap { root in
+            [root] + categories.filter { $0.parentId == root.id }.sorted { $0.name < $1.name }
+        }
+    }
+
+    /// Метка для пикера: подкатегории отображаются с отступом
+    static func displayLabel(for category: Category) -> String {
+        category.isRoot ? category.name : "    ↳ \(category.name)"
+    }
+
+    /// Breadcrumb для выбранного значения: «Продукты / Молоко» или просто «Продукты»
+    static func breadcrumb(for category: Category, in all: [Category]) -> String {
+        guard let parentId = category.parentId,
+              let parent = all.first(where: { $0.id == parentId }) else {
+            return category.name
+        }
+        return "\(parent.name) / \(category.name)"
     }
 
     // MARK: - Private

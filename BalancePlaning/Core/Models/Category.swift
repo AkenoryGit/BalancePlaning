@@ -18,6 +18,8 @@ class Category {
     var parentId: UUID? = nil
     /// Системная категория «Неизвестно» — нельзя удалить
     var isDefault: Bool = false
+    /// Цвет категории в формате hex (напр. "FF4B4B"); пусто = нет цвета
+    var color: String = ""
 
     init(
         id: UUID = UUID(),
@@ -25,7 +27,8 @@ class Category {
         name: String,
         type: CategoryType,
         parentId: UUID? = nil,
-        isDefault: Bool = false
+        isDefault: Bool = false,
+        color: String = ""
     ) {
         self.id = id
         self.userId = userId
@@ -33,6 +36,7 @@ class Category {
         self.type = type
         self.parentId = parentId
         self.isDefault = isDefault
+        self.color = color
     }
 
     /// true, если категория является корневой (не подкатегория)
