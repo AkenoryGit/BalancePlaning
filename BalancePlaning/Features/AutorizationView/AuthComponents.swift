@@ -9,7 +9,7 @@ import SwiftUI
 
 struct AuthTextField: View {
     let icon: String
-    let placeholder: String
+    let placeholder: LocalizedStringKey
     @Binding var text: String
     var keyboardType: UIKeyboardType = .default
 
@@ -34,7 +34,7 @@ struct AuthTextField: View {
 
 struct AuthSecureField: View {
     let icon: String
-    let placeholder: String
+    let placeholder: LocalizedStringKey
     @Binding var text: String
     @State private var isSecure: Bool = true
 
@@ -71,7 +71,7 @@ struct AuthSecureField: View {
 // MARK: - Градиентная кнопка
 
 struct AuthPrimaryButton: View {
-    let title: String
+    let title: LocalizedStringKey
     let action: () -> Void
 
     var body: some View {
@@ -104,7 +104,7 @@ struct AuthErrorLabel: View {
 
     var body: some View {
         if !message.isEmpty {
-            Label(message, systemImage: "exclamationmark.circle.fill")
+            Label(LocalizedStringKey(message), systemImage: "exclamationmark.circle.fill")
                 .font(.caption)
                 .foregroundStyle(.red)
                 .frame(maxWidth: .infinity, alignment: .leading)

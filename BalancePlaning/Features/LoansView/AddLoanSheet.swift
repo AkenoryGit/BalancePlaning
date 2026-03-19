@@ -6,9 +6,27 @@
 import SwiftUI
 import SwiftData
 
+// MARK: - Черновик записи графика (для редактора перед созданием)
+
+struct DraftEntry: Identifiable {
+    let id = UUID()
+    let paymentNumber: Int
+    let date: Date
+    var amountStr: String
+    var isIncluded: Bool = true
+
+    var amount: Decimal? {
+        Decimal(string: amountStr.replacingOccurrences(of: ",", with: "."))
+    }
+    var isPast: Bool { date <= Date() }
+}
+
+// MARK: - Лист добавления / редактирования кредита
+
 struct AddLoanSheet: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
     @Query private var allCurrencies: [Currency]
 
     let loan: Loan?
@@ -35,7 +53,7 @@ struct AddLoanSheet: View {
     @State private var amountStr: String = ""
     @State private var rateStr: String = ""
     @State private var termStr: String = ""
-    @State private var paymentStr: String = ""        // переопределение платежа
+    @State private var paymentStr: String = ""
     @State private var startDate: Date = Date()
     @State private var useFirstPaymentDate: Bool = false
     @State private var firstPaymentDate: Date = Date()
@@ -45,6 +63,9 @@ struct AddLoanSheet: View {
     @State private var showAmountError = false
     @State private var showRateError = false
     @State private var showTermError = false
+
+    @State private var showScheduleEditor = false
+    @State private var draftEntries: [DraftEntry] = []
 
     private var userCurrencies: [Currency] {
         guard let uid = currentUserId() else { return [] }
@@ -61,11 +82,10 @@ struct AddLoanSheet: View {
     private var termMonths: Int? { Int(termStr) }
 
     private var computedPayment: Decimal? {
-        guard let a = amount, let r = rate, let t = termMonths, a > 0, r > 0, t > 0 else { return nil }
+        guard let a = amount, let r = rate, let t = termMonths, a > 0, r >= 0, t > 0 else { return nil }
         return LoanService.annuityPayment(principal: a, annualRate: r, months: t)
     }
 
-    /// Финальный платёж: введённый вручную или авторасчёт
     private var effectivePayment: Decimal? {
         if let manual = Decimal(string: paymentStr.replacingOccurrences(of: ",", with: ".")), !paymentStr.isEmpty {
             return manual
@@ -74,7 +94,7 @@ struct AddLoanSheet: View {
     }
 
     private var paymentDayLabel: String {
-        paymentDay == 0 ? "Последнее число" : "\(paymentDay)"
+        paymentDay == 0 ? AppSettings.shared.bundle.localizedString(forKey: "Последнее число", value: "Последнее число", table: nil) : "\(paymentDay)"
     }
 
     private var isEditing: Bool { loan != nil }
@@ -138,7 +158,7 @@ struct AddLoanSheet: View {
 
                         Divider().padding(.leading, 16)
 
-                        // Ежемесячный платёж (авто или ручной)
+                        // Ежемесячный платёж
                         HStack(spacing: 12) {
                             Image(systemName: "banknote")
                                 .foregroundStyle(Color(hex: "E74C3C"))
@@ -165,13 +185,12 @@ struct AddLoanSheet: View {
                             Spacer()
                             DatePicker("", selection: $startDate, displayedComponents: [.date])
                                 .labelsHidden()
-                                .environment(\.locale, Locale(identifier: "ru_RU"))
                         }
                         .padding(.horizontal, 16).padding(.vertical, 10)
 
                         Divider().padding(.leading, 16)
 
-                        // Дата первого платежа (опционально)
+                        // Дата первого платежа
                         HStack(spacing: 12) {
                             Image(systemName: "calendar.badge.plus")
                                 .foregroundStyle(Color(hex: "E74C3C"))
@@ -193,14 +212,13 @@ struct AddLoanSheet: View {
                                 Spacer()
                                 DatePicker("", selection: $firstPaymentDate, displayedComponents: [.date])
                                     .labelsHidden()
-                                    .environment(\.locale, Locale(identifier: "ru_RU"))
                             }
                             .padding(.horizontal, 16).padding(.vertical, 10)
                         }
 
                         Divider().padding(.leading, 16)
 
-                        // Число оплаты (1-28 + последнее число)
+                        // Число оплаты
                         HStack(spacing: 12) {
                             Image(systemName: "calendar.badge.checkmark")
                                 .foregroundStyle(Color(hex: "E74C3C"))
@@ -273,44 +291,191 @@ struct AddLoanSheet: View {
                         .foregroundStyle(.secondary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(isEditing ? "Сохранить" : "Добавить") { save() }
-                        .fontWeight(.semibold)
-                        .foregroundStyle(Color(hex: "E74C3C"))
+                    if isEditing {
+                        Button("Сохранить") { saveEdit() }
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Color(hex: "E74C3C"))
+                    } else {
+                        Button("Далее") { proceedToSchedule() }
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Color(hex: "E74C3C"))
+                    }
                 }
+            }
+            .navigationDestination(isPresented: $showScheduleEditor) {
+                LoanScheduleEditorView(
+                    entries: $draftEntries,
+                    currency: currency,
+                    onSave: {
+                        saveCreate()
+                        dismiss()
+                    }
+                )
             }
         }
     }
 
-    private func save() {
+    // MARK: - Actions
+
+    private func proceedToSchedule() {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         guard !trimmedName.isEmpty else { return }
-
+        showAmountError = amount == nil || (amount ?? 0) <= 0
+        showRateError   = rate == nil || (rate ?? -1) < 0
+        showTermError   = termMonths == nil || (termMonths ?? 0) <= 0
+        guard !showAmountError, !showRateError, !showTermError,
+              let a = amount, let r = rate, let t = termMonths else { return }
+        let payment = effectivePayment ?? LoanService.annuityPayment(principal: a, annualRate: r, months: t)
         let firstDate: Date? = useFirstPaymentDate ? firstPaymentDate : nil
+        let tempLoan = Loan(userId: currentUserId() ?? UUID(), name: name,
+                            originalAmount: a, interestRate: r, termMonths: t,
+                            startDate: startDate, paymentDay: paymentDay,
+                            monthlyPayment: payment, currency: currency,
+                            firstPaymentDate: firstDate)
         let svc = LoanService(context: context)
-
-        if let loan = loan {
-            // Редактирование: amount менять нельзя, валидируем только rate и term
-            showRateError  = rate == nil || (rate ?? 0) <= 0
-            showTermError  = termMonths == nil || (termMonths ?? 0) <= 0
-            guard !showRateError, !showTermError,
-                  let r = rate, let t = termMonths else { return }
-            let paymentOverride: Decimal? = paymentStr.isEmpty ? nil : effectivePayment
-            svc.updateLoan(loan, name: trimmedName, interestRate: r, termMonths: t,
-                           paymentDay: paymentDay, firstPaymentDate: firstDate,
-                           monthlyPaymentOverride: paymentOverride)
-        } else {
-            // Создание: валидируем все поля включая amount
-            showAmountError = amount == nil || (amount ?? 0) <= 0
-            showRateError   = rate == nil || (rate ?? 0) <= 0
-            showTermError   = termMonths == nil || (termMonths ?? 0) <= 0
-            guard !showAmountError, !showRateError, !showTermError,
-                  let a = amount, let r = rate, let t = termMonths else { return }
-            let paymentOverride: Decimal? = paymentStr.isEmpty ? nil : effectivePayment
-            svc.addLoan(name: trimmedName, originalAmount: a, interestRate: r,
-                        termMonths: t, startDate: startDate, paymentDay: paymentDay,
-                        currency: currency, firstPaymentDate: firstDate,
-                        monthlyPaymentOverride: paymentOverride)
+        let schedule = svc.generateSchedule(for: tempLoan, payments: [])
+        draftEntries = schedule.filter { !$0.isPrepayment }.map { entry in
+            DraftEntry(
+                paymentNumber: entry.paymentNumber,
+                date: entry.date,
+                amountStr: NSDecimalNumber(decimal: entry.totalAmount).stringValue,
+                isIncluded: true
+            )
         }
+        showScheduleEditor = true
+    }
+
+    private func saveCreate() {
+        guard let a = amount, let r = rate, let t = termMonths else { return }
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmedName.isEmpty else { return }
+        let firstDate: Date? = useFirstPaymentDate ? firstPaymentDate : nil
+        let paymentOverride: Decimal? = paymentStr.isEmpty ? nil : effectivePayment
+        let entries = draftEntries.filter { $0.isIncluded }.compactMap { e -> (date: Date, amount: Decimal)? in
+            guard let amt = e.amount, amt > 0 else { return nil }
+            return (date: e.date, amount: amt)
+        }
+        LoanService(context: context).addLoanWithSchedule(
+            name: trimmedName, originalAmount: a, interestRate: r,
+            termMonths: t, startDate: startDate, paymentDay: paymentDay,
+            currency: currency, firstPaymentDate: firstDate,
+            monthlyPaymentOverride: paymentOverride,
+            scheduledEntries: entries
+        )
+    }
+
+    private func saveEdit() {
+        guard let loan else { return }
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmedName.isEmpty else { return }
+        showRateError  = rate == nil || (rate ?? -1) < 0
+        showTermError  = termMonths == nil || (termMonths ?? 0) <= 0
+        guard !showRateError, !showTermError,
+              let r = rate, let t = termMonths else { return }
+        let firstDate: Date? = useFirstPaymentDate ? firstPaymentDate : nil
+        let paymentOverride: Decimal? = paymentStr.isEmpty ? nil : effectivePayment
+        LoanService(context: context).updateLoan(loan, name: trimmedName, interestRate: r,
+                                                  termMonths: t, paymentDay: paymentDay,
+                                                  firstPaymentDate: firstDate,
+                                                  monthlyPaymentOverride: paymentOverride)
         dismiss()
+    }
+}
+
+// MARK: - Редактор графика платежей
+
+struct LoanScheduleEditorView: View {
+    @Binding var entries: [DraftEntry]
+    let currency: String
+    let onSave: () -> Void
+    @Environment(\.locale) private var locale
+
+    private var currencySymbol: String { CurrencyInfo.symbol(for: currency) }
+    private var includedCount: Int { entries.filter { $0.isIncluded }.count }
+    private var pastCount: Int { entries.filter { $0.isIncluded && $0.isPast }.count }
+
+    var body: some View {
+        List {
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Все включённые платежи создадутся как операции.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if pastCount > 0 {
+                        Label("\(pastCount) прош. платеж\(pastCount == 1 ? "" : "а") — отметятся выполненными", systemImage: "checkmark.circle")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.Colors.income)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section("Платежи (\(includedCount) из \(entries.count))") {
+                ForEach(entries.indices, id: \.self) { i in
+                    HStack(spacing: 12) {
+                        Circle()
+                            .fill(entries[i].isPast ? AppTheme.Colors.income : AppTheme.Colors.accent)
+                            .frame(width: 8, height: 8)
+                            .opacity(entries[i].isIncluded ? 1 : 0.25)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entries[i].date, format: .dateTime
+                                .day().month(.wide).year().locale(locale))
+                                .font(.subheadline)
+                                .foregroundStyle(entries[i].isIncluded ? .primary : .secondary)
+                            if entries[i].isPast && entries[i].isIncluded {
+                                Text("Выполнен")
+                                    .font(.caption2)
+                                    .foregroundStyle(AppTheme.Colors.income)
+                            }
+                        }
+
+                        Spacer()
+
+                        if entries[i].isIncluded {
+                            HStack(spacing: 2) {
+                                TextField("", text: $entries[i].amountStr)
+                                    .keyboardType(.decimalPad)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(width: 80)
+                                    .foregroundStyle(.primary)
+                                Text(currencySymbol)
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        Toggle("", isOn: $entries[i].isIncluded)
+                            .labelsHidden()
+                            .tint(AppTheme.Colors.accent)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .navigationTitle("График платежей")
+        .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                Divider()
+                Button(action: onSave) {
+                    Label("Создать кредит", systemImage: "checkmark.circle.fill")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            LinearGradient(
+                                colors: [Color(hex: "C0392B"), Color(hex: "E74C3C")],
+                                startPoint: .leading, endPoint: .trailing
+                            )
+                        )
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.buttonRadius))
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 12)
+            }
+            .background(Color(.secondarySystemGroupedBackground))
+        }
     }
 }

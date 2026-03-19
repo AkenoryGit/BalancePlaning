@@ -16,6 +16,7 @@ struct AccountDetailSheet: View {
 
     @State private var name: String
     @State private var groupId: UUID?
+    @State private var selectedIcon: String
     @State private var showCorrection = false
     @State private var nameError = false
     @State private var showDeleteDialog = false
@@ -27,6 +28,7 @@ struct AccountDetailSheet: View {
         self._selectedAccount = selectedAccount
         self._name = State(initialValue: account.name)
         self._groupId = State(initialValue: account.groupId)
+        self._selectedIcon = State(initialValue: account.icon)
     }
 
     @Query private var allCurrencies: [Currency]
@@ -42,7 +44,7 @@ struct AccountDetailSheet: View {
 
     private var selectedGroupName: String {
         if let gid = groupId, let g = groups.first(where: { $0.id == gid }) { return g.name }
-        return "Без группы"
+        return AppSettings.shared.bundle.localizedString(forKey: "Без группы", value: "Без группы", table: nil)
     }
 
     var body: some View {
@@ -50,7 +52,7 @@ struct AccountDetailSheet: View {
             SheetHandle().padding(.bottom, 24)
 
             VStack(spacing: 6) {
-                Image(systemName: "creditcard.fill")
+                Image(systemName: selectedIcon.isEmpty ? "creditcard.fill" : selectedIcon)
                     .font(.system(size: 44))
                     .foregroundStyle(AppTheme.Colors.accent)
 
@@ -114,8 +116,20 @@ struct AccountDetailSheet: View {
                     .background(Color(.tertiarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+
             }
             .padding(.horizontal)
+
+            // Иконка — снаружи .padding(.horizontal) чтобы скролл шёл до краёв
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Иконка")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
+                IconPickerView(selectedIcon: $selectedIcon,
+                               icons: IconPalette.accountIcons,
+                               accentColor: AppTheme.Colors.accent)
+            }
 
             Spacer()
 
@@ -162,6 +176,7 @@ struct AccountDetailSheet: View {
         guard !trimmed.isEmpty else { nameError = true; return }
         account.name = trimmed
         account.groupId = groupId
+        account.icon = selectedIcon
         try? context.save()
         selectedAccount = nil
     }
@@ -240,7 +255,6 @@ struct BalanceCorrectionSheet: View {
             .padding(.horizontal).padding(.top, 16)
 
             DatePicker("Дата корректировки", selection: $date, displayedComponents: [.date])
-                .environment(\.locale, Locale(identifier: "ru_RU"))
                 .padding(.horizontal).padding(.top, 12)
 
             Spacer()

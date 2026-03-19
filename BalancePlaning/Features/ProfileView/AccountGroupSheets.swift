@@ -20,6 +20,7 @@ struct AddAccountSheet: View {
     @State private var balanceString = ""
     @State private var groupId: UUID? = nil
     @State private var currency = "RUB"
+    @State private var selectedIcon = ""
     @State private var didAttemptSave = false
     @State private var showAddCurrency = false
 
@@ -35,7 +36,7 @@ struct AddAccountSheet: View {
     private var balanceIsValid: Bool { balance != nil }
     private var selectedGroupName: String {
         if let gid = groupId, let g = groups.first(where: { $0.id == gid }) { return g.name }
-        return "Без группы"
+        return AppSettings.shared.bundle.localizedString(forKey: "Без группы", value: "Без группы", table: nil)
     }
     private var allCurrencyOptions: [CurrencyInfo] { CurrencyInfo.all(custom: userCurrencies) }
     private var selectedCurrencyLabel: String {
@@ -50,7 +51,8 @@ struct AddAccountSheet: View {
             Text("Новый счёт").font(.title3.bold()).padding(.bottom, 24)
 
             VStack(spacing: 12) {
-                inputField(icon: "creditcard.fill", placeholder: "Название счёта", text: $name,
+                inputField(icon: selectedIcon.isEmpty ? "creditcard.fill" : selectedIcon,
+                           placeholder: "Название счёта", text: $name,
                            hasError: didAttemptSave && !nameIsValid, errorText: "Введите название счёта",
                            keyboard: .default)
                     .onChange(of: name) { _, _ in if didAttemptSave { didAttemptSave = false } }
@@ -66,6 +68,16 @@ struct AddAccountSheet: View {
                 if !groups.isEmpty {
                     groupPicker
                 }
+
+                // Выбор иконки
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Иконка")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    IconPickerView(selectedIcon: $selectedIcon,
+                                   icons: IconPalette.accountIcons,
+                                   accentColor: AppTheme.Colors.accent)
+                }
             }
             .padding(.horizontal)
 
@@ -79,7 +91,8 @@ struct AddAccountSheet: View {
                         accountName: name.trimmingCharacters(in: .whitespacesAndNewlines),
                         startBalance: balance ?? .zero,
                         groupId: groupId,
-                        currency: currency
+                        currency: currency,
+                        icon: selectedIcon
                     )
                     dismiss()
                 }
@@ -295,10 +308,10 @@ struct GroupDetailSheet: View {
 
 private func inputField(
     icon: String,
-    placeholder: String,
+    placeholder: LocalizedStringKey,
     text: Binding<String>,
     hasError: Bool,
-    errorText: String,
+    errorText: LocalizedStringKey,
     keyboard: UIKeyboardType
 ) -> some View {
     VStack(alignment: .leading, spacing: 4) {

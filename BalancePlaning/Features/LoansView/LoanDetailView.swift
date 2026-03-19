@@ -9,6 +9,7 @@ import SwiftData
 struct LoanDetailView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
     let loan: Loan
 
     @Query private var allPayments: [LoanPayment]
@@ -124,7 +125,7 @@ struct LoanDetailView: View {
                 HStack(spacing: 10) {
                     statPill(title: "Платёж/мес",
                              value: "\(monthly.formatted(.number.precision(.fractionLength(0...0)))) \(CurrencyInfo.symbol(for: loan.currency))")
-                    statPill(title: "Осталось", value: "\(remainMonths) мес.")
+                    statPill(title: "Осталось", value: "\(remainMonths) \(AppSettings.shared.bundle.localizedString(forKey: "мес.", value: "мес.", table: nil))")
                     statPill(title: "Переплата",
                              value: "\(overpayment.formatted(.number.precision(.fractionLength(0...0)))) \(CurrencyInfo.symbol(for: loan.currency))")
                 }
@@ -142,7 +143,7 @@ struct LoanDetailView: View {
         .padding(.horizontal)
     }
 
-    private func statPill(title: String, value: String) -> some View {
+    private func statPill(title: LocalizedStringKey, value: String) -> some View {
         VStack(spacing: 2) {
             Text(title)
                 .font(.caption2)
@@ -160,22 +161,34 @@ struct LoanDetailView: View {
     // MARK: - Info
 
     private var infoCard: some View {
-        VStack(spacing: 0) {
+        let bundle = AppSettings.shared.bundle
+        let moLabel = bundle.localizedString(forKey: "мес.", value: "мес.", table: nil)
+        let paLabel = bundle.localizedString(forKey: "годовых", value: "годовых", table: nil)
+        let lastDay = bundle.localizedString(forKey: "Последнее число месяца", value: "Последнее число месяца", table: nil)
+        let dayLabel: String
+        if loan.paymentDay == 0 {
+            dayLabel = lastDay
+        } else if bundle != Bundle.main {
+            dayLabel = "Day \(loan.paymentDay)"
+        } else {
+            dayLabel = "\(loan.paymentDay)-е число"
+        }
+        return VStack(spacing: 0) {
             infoRow(label: "Сумма кредита", value: "\(loan.originalAmount.formatted(.number.precision(.fractionLength(0...0)))) \(CurrencyInfo.symbol(for: loan.currency))")
             Divider().padding(.leading, 16)
-            infoRow(label: "Процентная ставка", value: "\(LoanService.toDouble(loan.interestRate).formatted(.number.precision(.fractionLength(0...2))))% годовых")
+            infoRow(label: "Процентная ставка", value: "\(LoanService.toDouble(loan.interestRate).formatted(.number.precision(.fractionLength(0...2))))% \(paLabel)")
             Divider().padding(.leading, 16)
-            infoRow(label: "Срок", value: "\(loan.termMonths) мес.")
+            infoRow(label: "Срок", value: "\(loan.termMonths) \(moLabel)")
             Divider().padding(.leading, 16)
-            infoRow(label: "Дата выдачи", value: loan.startDate.formatted(.dateTime.locale(Locale(identifier: "ru_RU")).day().month(.wide).year()))
+            infoRow(label: "Дата выдачи", value: loan.startDate.formatted(.dateTime.day().month(.wide).year().locale(locale)))
             Divider().padding(.leading, 16)
-            infoRow(label: "Дата платежа", value: "\(loan.paymentDay)-е число")
+            infoRow(label: "Дата платежа", value: dayLabel)
         }
         .cardStyle()
         .padding(.horizontal)
     }
 
-    private func infoRow(label: String, value: String) -> some View {
+    private func infoRow(label: LocalizedStringKey, value: String) -> some View {
         HStack {
             Text(label).foregroundStyle(.secondary)
             Spacer()
@@ -199,12 +212,47 @@ struct LoanDetailView: View {
                 if idx > 0 {
                     Divider().padding(.leading, 56)
                 }
-                ScheduleRow(entry: entry)
+                ScheduleRow(
+                    entry: entry,
+                    isScheduledFuture: !entry.isPaid && !entry.isPrepayment && entry.linkedPaymentId != nil,
+                    onCheck: (!loan.isArchived && !entry.isPaid && !entry.isPrepayment) ? {
+                        checkAction(for: entry)
+                    } : nil,
+                    onUnmark: (entry.isPaid && !entry.isPrepayment) ? {
+                        uncheckAction(for: entry)
+                    } : nil
+                )
             }
             .padding(.bottom, 8)
         }
         .cardStyle()
         .padding(.horizontal)
+    }
+
+    // MARK: - Add Payment Bar
+
+    // MARK: - Checkbox actions
+
+    private func checkAction(for entry: LoanScheduleEntry) {
+        if let paymentId = entry.linkedPaymentId,
+           let payment = allPayments.first(where: { $0.id == paymentId }) {
+            service.revertPaymentDate(payment, to: Date())
+        } else {
+            let paymentDate = entry.date <= Date() ? entry.date : Date()
+            service.addPayment(to: loan, date: paymentDate, amount: entry.totalAmount,
+                               isPrepayment: false, prepaymentType: nil,
+                               fromAccount: nil, allPayments: loanPayments)
+        }
+    }
+
+    private func uncheckAction(for entry: LoanScheduleEntry) {
+        guard let paymentId = entry.linkedPaymentId,
+              let payment = allPayments.first(where: { $0.id == paymentId }) else { return }
+        if entry.date <= Date() {
+            service.deletePayment(payment, loan: loan, allPayments: loanPayments)
+        } else {
+            service.revertPaymentDate(payment, to: entry.date)
+        }
     }
 
     // MARK: - Add Payment Bar
@@ -241,21 +289,27 @@ struct LoanDetailView: View {
 
 private struct ScheduleRow: View {
     let entry: LoanScheduleEntry
+    var isScheduledFuture: Bool = false
+    var onCheck: (() -> Void)? = nil
+    var onUnmark: (() -> Void)? = nil
+    @Environment(\.locale) private var locale
+
+    private var action: (() -> Void)? {
+        if entry.isPaid { return onUnmark }
+        return onCheck
+    }
 
     var body: some View {
         HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(statusColor.opacity(0.15))
-                    .frame(width: 32, height: 32)
-                Image(systemName: statusIcon)
-                    .font(.caption.bold())
-                    .foregroundStyle(statusColor)
+            if let action {
+                Button(action: action) { statusCircle }.buttonStyle(.plain)
+            } else {
+                statusCircle
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    Text(entry.date, format: .dateTime.locale(Locale(identifier: "ru_RU")).day().month(.wide).year())
+                    Text(entry.date, format: .dateTime.day().month(.wide).year().locale(locale))
                         .font(.subheadline)
                         .foregroundStyle(entry.isPaid ? .secondary : .primary)
 
@@ -271,7 +325,10 @@ private struct ScheduleRow: View {
                 }
 
                 if !entry.isPrepayment {
-                    Text("Осн: \(entry.principalPart, format: .number.precision(.fractionLength(0...0))) ₽  · Проц: \(entry.interestPart, format: .number.precision(.fractionLength(0...0))) ₽")
+                    let b = AppSettings.shared.bundle
+                    let osnLabel = b.localizedString(forKey: "Осн:", value: "Осн:", table: nil)
+                    let procLabel = b.localizedString(forKey: "Проц:", value: "Проц:", table: nil)
+                    Text("\(osnLabel) \(entry.principalPart, format: .number.precision(.fractionLength(0...0))) ₽  · \(procLabel) \(entry.interestPart, format: .number.precision(.fractionLength(0...0))) ₽")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
@@ -292,14 +349,28 @@ private struct ScheduleRow: View {
         .padding(.vertical, 12)
     }
 
+    private var statusCircle: some View {
+        ZStack {
+            Circle()
+                .fill(statusColor.opacity(0.15))
+                .frame(width: 32, height: 32)
+            Image(systemName: statusIcon)
+                .font(.caption.bold())
+                .foregroundStyle(statusColor)
+        }
+    }
+
     private var statusIcon: String {
         if entry.isPaid { return "checkmark" }
+        if entry.isPrepayment { return "clock" }
+        if isScheduledFuture { return "circle.dotted" }
         if entry.date < Date() { return "exclamationmark" }
-        return "clock"
+        return "circle"
     }
 
     private var statusColor: Color {
         if entry.isPaid { return AppTheme.Colors.income }
+        if isScheduledFuture { return AppTheme.Colors.accent }
         if entry.date < Date() { return AppTheme.Colors.expense }
         return .secondary
     }

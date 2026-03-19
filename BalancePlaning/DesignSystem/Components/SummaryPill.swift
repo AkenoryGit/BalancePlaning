@@ -9,7 +9,7 @@ import SwiftData
 // MARK: - Плашка одной суммы
 
 struct SummaryPill: View {
-    let label: String
+    let label: LocalizedStringKey
     let amount: Decimal
     let color: Color
 
@@ -37,7 +37,7 @@ struct SummaryPill: View {
 // MARK: - Плашка с разбивкой по валютам
 
 struct MultiCurrencyPill: View {
-    let label: String
+    let label: LocalizedStringKey
     let entries: [(code: String, amount: Decimal)]
     let color: Color
     let customCurrencies: [Currency]

@@ -49,6 +49,36 @@ extension Color {
     }
 }
 
+// MARK: - Палитра иконок
+
+enum IconPalette {
+    static let categoryIcons: [String] = [
+        // Финансы
+        "dollarsign", "banknote", "creditcard.fill", "chart.line.uptrend.xyaxis", "chart.pie.fill",
+        // Еда и покупки
+        "fork.knife", "cup.and.saucer.fill", "cart.fill", "bag.fill", "storefront.fill",
+        // Транспорт
+        "car.fill", "bus.fill", "airplane", "bicycle", "tram.fill", "fuelpump.fill",
+        // Дом
+        "house.fill", "bed.double.fill", "lightbulb.fill", "wrench.and.screwdriver.fill", "sofa.fill",
+        // Здоровье
+        "heart.fill", "cross.case.fill", "figure.walk", "pills.fill", "stethoscope",
+        // Развлечения
+        "tv.fill", "gamecontroller.fill", "headphones", "film.fill", "music.note",
+        // Образование и работа
+        "book.fill", "graduationcap.fill", "briefcase.fill", "desktopcomputer", "pencil",
+        // Личное
+        "person.fill", "gift.fill", "phone.fill", "globe", "pawprint.fill", "sportscourt.fill",
+    ]
+
+    static let accountIcons: [String] = [
+        "creditcard.fill", "creditcard", "banknote", "wallet.bifold.fill",
+        "building.columns.fill", "safe.fill", "dollarsign.circle.fill",
+        "bitcoinsign.circle.fill", "eurosign.circle.fill", "sterlingsign.circle.fill",
+        "briefcase.fill", "house.fill", "car.fill", "iphone", "gift.fill",
+    ]
+}
+
 // MARK: - Палитра цветов для категорий
 
 enum CategoryColors {

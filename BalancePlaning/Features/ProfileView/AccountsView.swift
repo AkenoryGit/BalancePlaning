@@ -172,7 +172,7 @@ struct AccountGroupSection: View {
                     Divider().padding(.leading, 60)
                     Button { onAccountTap(account) } label: {
                         HStack(spacing: 12) {
-                            Image(systemName: "creditcard")
+                            Image(systemName: account.icon.isEmpty ? "creditcard" : account.icon)
                                 .font(.subheadline).foregroundStyle(AppTheme.Colors.accent)
                                 .frame(width: 34, height: 34)
 
@@ -208,7 +208,7 @@ struct AccountRowCard: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Image(systemName: "creditcard.fill")
+            Image(systemName: account.icon.isEmpty ? "creditcard.fill" : account.icon)
                 .font(.title3).foregroundStyle(AppTheme.Colors.accent)
                 .frame(width: 40, height: 40)
                 .background(AppTheme.Colors.accent.opacity(0.1)).clipShape(Circle())

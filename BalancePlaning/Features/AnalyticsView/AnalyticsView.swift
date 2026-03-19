@@ -19,12 +19,23 @@ struct AnalyticsView: View {
     @Query private var allTransactions: [Transaction]
     @Query private var allCategories: [Category]
     @Query private var allCurrencies: [Currency]
+    @Query private var allLoans: [Loan]
+
+    @State private var includeLoanPayments: Bool = true
 
     private var accountService: AccountService { AccountService(context: context) }
 
+    private var incomeChartLabel: String {
+        AppSettings.shared.bundle.localizedString(forKey: "Доходы", value: "Доходы", table: nil)
+    }
+    private var expenseChartLabel: String {
+        AppSettings.shared.bundle.localizedString(forKey: "Расходы", value: "Расходы", table: nil)
+    }
+
     private var userTransactions: [Transaction] {
         guard let userId = currentUserId() else { return [] }
-        return allTransactions.filter { $0.userId == userId }
+        // Корректировки не участвуют в аналитике
+        return allTransactions.filter { $0.userId == userId && $0.type != .correction }
     }
 
     private var futureTransactions: [Transaction] {
@@ -41,10 +52,27 @@ struct AnalyticsView: View {
         }
     }
 
+    /// Транзакции за месяц с учётом фильтра
+    private var filteredMonthlyTransactions: [Transaction] {
+        monthlyTransactions.filter { t in
+            if t.loanId != nil { return includeLoanPayments }
+            return true
+        }
+    }
+
+    /// Валюта для транзакции — для платежей без счёта берём из кредита
+    private func expenseCurrency(for t: Transaction) -> String {
+        if let account = t.fromAccount { return account.currency }
+        if let loanId = t.loanId {
+            return allLoans.first { $0.id == loanId }?.currency ?? "RUB"
+        }
+        return "RUB"
+    }
+
     /// Доходы по валютам: код → сумма
     private var monthlyIncomeByCurrency: [(code: String, amount: Decimal)] {
         var dict: [String: Decimal] = [:]
-        for t in monthlyTransactions where t.type == .income {
+        for t in filteredMonthlyTransactions where t.type == .income {
             let code = t.toAccount?.currency ?? "RUB"
             dict[code, default: .zero] += t.amount
         }
@@ -55,8 +83,8 @@ struct AnalyticsView: View {
     /// Расходы по валютам: код → сумма
     private var monthlyExpenseByCurrency: [(code: String, amount: Decimal)] {
         var dict: [String: Decimal] = [:]
-        for t in monthlyTransactions where t.type == .expense {
-            let code = t.fromAccount?.currency ?? "RUB"
+        for t in filteredMonthlyTransactions where t.type == .expense {
+            let code = expenseCurrency(for: t)
             dict[code, default: .zero] += t.amount
         }
         return dict.map { (code: $0.key, amount: $0.value) }
@@ -74,13 +102,15 @@ struct AnalyticsView: View {
 
     /// Топ расходов, сгруппированных по корневой категории
     private var expenseByCategoryGroup: [CategoryExpenseGroup] {
-        // Сумма по каждой категории (id → amount)
         var amountById: [UUID: Decimal] = [:]
-        for t in monthlyTransactions where t.type == .expense {
-            guard let cat = t.toCategory else {
-                // нет категории — учитываем отдельно
+        var loanPaymentsTotal: Decimal = .zero
+
+        for t in filteredMonthlyTransactions where t.type == .expense {
+            if t.loanId != nil {
+                loanPaymentsTotal += t.amount
                 continue
             }
+            guard let cat = t.toCategory else { continue }
             amountById[cat.id, default: .zero] += t.amount
         }
 
@@ -99,7 +129,7 @@ struct AnalyticsView: View {
 
         let toDouble: (Decimal) -> Double = { Double(truncating: NSDecimalNumber(decimal: $0)) }
 
-        return rootTotals
+        var groups = rootTotals
             .compactMap { rootId, total -> CategoryExpenseGroup? in
                 guard let root = allCategories.first(where: { $0.id == rootId }) else { return nil }
                 let subs = (childrenMap[rootId] ?? [:])
@@ -118,12 +148,22 @@ struct AnalyticsView: View {
             .sorted { $0.total > $1.total }
             .prefix(5)
             .map { $0 }
+
+        if loanPaymentsTotal > 0 {
+            groups.append(CategoryExpenseGroup(
+                rootName: "Платежи по кредитам",
+                rootColor: Color(hex: "E74C3C"),
+                total: toDouble(loanPaymentsTotal),
+                children: []
+            ))
+        }
+        return groups
     }
 
     /// Топ доходов, сгруппированных по корневой категории
     private var incomeByCategoryGroup: [CategoryExpenseGroup] {
         var amountById: [UUID: Decimal] = [:]
-        for t in monthlyTransactions where t.type == .income {
+        for t in filteredMonthlyTransactions where t.type == .income {
             guard let cat = t.fromCategory else { continue }
             amountById[cat.id, default: .zero] += t.amount
         }
@@ -168,7 +208,7 @@ struct AnalyticsView: View {
         var incomeByDay: [Int: Double] = [:]
         var expenseByDay: [Int: Double] = [:]
         let cal = Calendar.current
-        for t in monthlyTransactions {
+        for t in filteredMonthlyTransactions {
             let day = cal.component(.day, from: t.date)
             let amount = Double(truncating: NSDecimalNumber(decimal: t.amount))
             if t.type == .income  { incomeByDay[day, default: 0]  += amount }
@@ -179,13 +219,13 @@ struct AnalyticsView: View {
         for (day, amount) in incomeByDay {
             var dc = monthComponents; dc.day = day
             if let date = cal.date(from: dc) {
-                result.append(DayAmount(date: date, amount: amount, kind: "Доходы"))
+                result.append(DayAmount(date: date, amount: amount, kind: incomeChartLabel))
             }
         }
         for (day, amount) in expenseByDay {
             var dc = monthComponents; dc.day = day
             if let date = cal.date(from: dc) {
-                result.append(DayAmount(date: date, amount: amount, kind: "Расходы"))
+                result.append(DayAmount(date: date, amount: amount, kind: expenseChartLabel))
             }
         }
         return result.sorted { $0.date < $1.date }
@@ -270,8 +310,8 @@ struct AnalyticsView: View {
                                 .cornerRadius(4)
                             }
                             .chartForegroundStyleScale([
-                                "Доходы":  AppTheme.Colors.income,
-                                "Расходы": AppTheme.Colors.expense
+                                incomeChartLabel:  AppTheme.Colors.income,
+                                expenseChartLabel: AppTheme.Colors.expense
                             ])
                             .chartXAxis {
                                 AxisMarks(values: .automatic(desiredCount: 6)) {
@@ -488,6 +528,27 @@ struct AnalyticsView: View {
             .background(AppTheme.Colors.pageBackground)
             .navigationTitle("Аналитика")
             .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Section("Показывать в аналитике") {
+                            Button {
+                                includeLoanPayments.toggle()
+                            } label: {
+                                Label(
+                                    "Платежи по кредитам",
+                                    systemImage: includeLoanPayments ? "checkmark" : ""
+                                )
+                            }
+                        }
+                    } label: {
+                        Image(systemName: includeLoanPayments
+                              ? "line.3.horizontal.decrease.circle.fill"
+                              : "line.3.horizontal.decrease.circle")
+                            .foregroundStyle(includeLoanPayments ? AppTheme.Colors.accent : .secondary)
+                    }
+                }
+            }
         }
     }
 }

@@ -22,7 +22,6 @@ struct DatePickerSheet: View {
 
             DatePicker("", selection: $date, displayedComponents: [.date])
                 .datePickerStyle(.graphical)
-                .environment(\.locale, Locale(identifier: "ru_RU"))
                 .padding(.horizontal)
 
             Button {
@@ -60,7 +59,7 @@ struct EmptyTransactionsPlaceholder: View {
         }
     }
 
-    private var emptyTitle: String {
+    private var emptyTitle: LocalizedStringKey {
         switch viewMode {
         case .day:    return "Операций за этот день нет"
         case .all:    return "Операций ещё нет"
@@ -68,7 +67,7 @@ struct EmptyTransactionsPlaceholder: View {
         }
     }
 
-    private var emptySubtitle: String {
+    private var emptySubtitle: LocalizedStringKey {
         switch viewMode {
         case .day, .all: return "Нажмите + чтобы добавить первую операцию"
         case .period:    return "Попробуйте изменить период или фильтры"

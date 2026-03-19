@@ -18,18 +18,31 @@ class CategoryService {
     // MARK: - Создание
 
     /// Создаёт корневую категорию
-    func addCategory(categoryName: String, type: CategoryType, color: String = "") {
+    func addCategory(categoryName: String, type: CategoryType, color: String = "", icon: String = "") {
         guard let userId = currentUserId() else {
             print("Нет текущего пользователя"); return
         }
-        let newCategory = Category(id: UUID(), userId: userId, name: categoryName, type: type, color: color)
+        let newCategory = Category(id: UUID(), userId: userId, name: categoryName, type: type, color: color, icon: icon)
         context.insert(newCategory)
         save("Категория \(categoryName) создана")
+    }
+
+    /// Обновляет имя и/или родителя категории
+    func updateCategory(_ category: Category, name: String, parentId: UUID?) {
+        category.name = name
+        category.parentId = parentId
+        save()
     }
 
     /// Обновляет цвет категории
     func updateColor(_ category: Category, color: String) {
         category.color = color
+        save()
+    }
+
+    /// Обновляет иконку категории
+    func updateIcon(_ category: Category, icon: String) {
+        category.icon = icon
         save()
     }
 

@@ -90,7 +90,7 @@ private struct LoanPickerCard: View {
                     .font(.headline)
                     .foregroundStyle(.primary)
                 let remaining = service.remainingPrincipal(for: loan, payments: payments)
-                Text("Остаток: \(remaining, format: .number.precision(.fractionLength(0...0))) \(CurrencyInfo.symbol(for: loan.currency))")
+                (Text("Остаток: ") + Text(remaining, format: .number.precision(.fractionLength(0...0))) + Text(" \(CurrencyInfo.symbol(for: loan.currency))"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -156,7 +156,7 @@ struct LoanPaymentFormView: View {
                             Image(systemName: isPrepayment ? "arrow.up.forward.circle.fill" : "calendar.circle.fill")
                                 .foregroundStyle(Color(hex: "E74C3C"))
                                 .frame(width: 20)
-                            Text(isPrepayment ? "Досрочное погашение" : "Плановый платёж")
+                            Text(LocalizedStringKey(isPrepayment ? "Досрочное погашение" : "Плановый платёж"))
                         }
                     }
                     .padding(.horizontal, 16).padding(.vertical, 14)
@@ -217,7 +217,6 @@ struct LoanPaymentFormView: View {
                         Spacer()
                         DatePicker("", selection: $paymentDate, displayedComponents: [.date])
                             .labelsHidden()
-                            .environment(\.locale, Locale(identifier: "ru_RU"))
                     }
                     .padding(.horizontal, 16).padding(.vertical, 10)
                 }
@@ -239,8 +238,10 @@ struct LoanPaymentFormView: View {
                                     Button(acc.name) { selectedAccountId = acc.id }
                                 }
                             } label: {
-                                Text(selectedAccount?.name ?? "Не указывать")
-                                    .foregroundStyle(.secondary)
+                                Group {
+                                    if let acc = selectedAccount { Text(acc.name) } else { Text("Не указывать") }
+                                }
+                                .foregroundStyle(.secondary)
                                 Image(systemName: "chevron.up.chevron.down")
                                     .font(.caption2).foregroundStyle(.tertiary)
                             }
@@ -260,7 +261,7 @@ struct LoanPaymentFormView: View {
             .padding(.bottom, 32)
         }
         .background(AppTheme.Colors.pageBackground)
-        .navigationTitle(isPrepayment ? "Досрочное погашение" : "Внести платёж")
+        .navigationTitle(LocalizedStringKey(isPrepayment ? "Досрочное погашение" : "Внести платёж"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -308,10 +309,11 @@ struct LoanPaymentFormView: View {
             Divider().padding(.horizontal, 16)
 
             if prepaymentType == .reduceTerm {
+                let moLabel = AppSettings.shared.bundle.localizedString(forKey: "мес.", value: "мес.", table: nil)
                 HStack {
-                    previewColumn(title: "Срок до", value: "\(beforeMonths) мес.")
+                    previewColumn(title: "Срок до", value: "\(beforeMonths) \(moLabel)")
                     Image(systemName: "arrow.right").foregroundStyle(.secondary)
-                    previewColumn(title: "Срок после", value: "\(afterMonths) мес.", highlight: true)
+                    previewColumn(title: "Срок после", value: "\(afterMonths) \(moLabel)", highlight: true)
                 }
                 .padding(.horizontal, 16).padding(.vertical, 10)
             } else {
@@ -328,7 +330,7 @@ struct LoanPaymentFormView: View {
         .padding(.horizontal)
     }
 
-    private func previewColumn(title: String, value: String, highlight: Bool = false) -> some View {
+    private func previewColumn(title: LocalizedStringKey, value: String, highlight: Bool = false) -> some View {
         VStack(spacing: 2) {
             Text(title).font(.caption2).foregroundStyle(.secondary)
             Text(value).font(.subheadline.bold())
@@ -358,5 +360,152 @@ struct LoanPaymentFormView: View {
             allPayments: Array(allPayments)
         )
         onSaved()
+    }
+}
+
+// MARK: - Редактирование существующего платежа по кредиту
+
+struct EditLoanPaymentSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+
+    let transaction: Transaction
+
+    @Query private var allPayments: [LoanPayment]
+    @Query private var allAccounts: [Account]
+
+    @State private var amountStr: String
+    @State private var paymentDate: Date
+    @State private var selectedAccountId: UUID?
+    @State private var showAmountError = false
+
+    init(transaction: Transaction) {
+        self.transaction = transaction
+        _amountStr     = State(initialValue: NSDecimalNumber(decimal: transaction.amount).stringValue)
+        _paymentDate   = State(initialValue: transaction.date)
+        _selectedAccountId = State(initialValue: transaction.fromAccount?.id)
+    }
+
+    private var userAccounts: [Account] {
+        guard let uid = currentUserId() else { return [] }
+        return allAccounts.filter { $0.userId == uid }
+    }
+
+    private var selectedAccount: Account? {
+        guard let id = selectedAccountId else { return nil }
+        return userAccounts.first { $0.id == id }
+    }
+
+    private var amount: Decimal? {
+        Decimal(string: amountStr.replacingOccurrences(of: ",", with: "."))
+    }
+
+    // Находим LoanPayment по loanId + дата (до изменения даты транзакции)
+    private var linkedPayment: LoanPayment? {
+        guard let loanId = transaction.loanId else { return nil }
+        return allPayments.first {
+            $0.loanId == loanId &&
+            Calendar.current.isDate($0.date, inSameDayAs: transaction.date)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+
+                    VStack(spacing: 0) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "rublesign")
+                                .foregroundStyle(Color(hex: "E74C3C"))
+                                .frame(width: 20)
+                            TextField("Сумма", text: $amountStr)
+                                .keyboardType(.decimalPad)
+                                .foregroundStyle(showAmountError ? .red : .primary)
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 14)
+
+                        if showAmountError {
+                            Text("Введите сумму больше нуля")
+                                .font(.caption).foregroundStyle(.red)
+                                .padding(.horizontal, 16).padding(.bottom, 8)
+                        }
+
+                        Divider().padding(.leading, 16)
+
+                        HStack(spacing: 12) {
+                            Image(systemName: "calendar")
+                                .foregroundStyle(Color(hex: "E74C3C"))
+                                .frame(width: 20)
+                            Text("Дата")
+                            Spacer()
+                            DatePicker("", selection: $paymentDate, displayedComponents: [.date])
+                                .labelsHidden()
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                    }
+                    .cardStyle()
+                    .padding(.horizontal)
+
+                    VStack(spacing: 0) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "creditcard")
+                                .foregroundStyle(Color(hex: "E74C3C"))
+                                .frame(width: 20)
+                            Text("Списать со счёта")
+                            Spacer()
+                            Menu {
+                                Button("—  Не указывать") { selectedAccountId = nil }
+                                if !userAccounts.isEmpty { Divider() }
+                                ForEach(userAccounts) { acc in
+                                    Button(acc.name) { selectedAccountId = acc.id }
+                                }
+                            } label: {
+                                Text(selectedAccount?.name ?? "—")
+                                    .foregroundStyle(.secondary)
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.caption2).foregroundStyle(.tertiary)
+                            }
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 14)
+                    }
+                    .cardStyle()
+                    .padding(.horizontal)
+                }
+                .padding(.top, 16)
+                .padding(.bottom, 32)
+            }
+            .background(AppTheme.Colors.pageBackground)
+            .navigationTitle("Редактировать платёж")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Отмена") { dismiss() }
+                        .foregroundStyle(.secondary)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Сохранить") { save() }
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Color(hex: "E74C3C"))
+                }
+            }
+        }
+    }
+
+    private func save() {
+        guard let amt = amount, amt > 0 else { showAmountError = true; return }
+
+        // Обновляем LoanPayment до изменения даты транзакции
+        if let payment = linkedPayment {
+            payment.fromAccountId = selectedAccount?.id
+            payment.totalAmount = amt
+            payment.date = paymentDate
+        }
+
+        transaction.fromAccount = selectedAccount
+        transaction.amount = amt
+        transaction.date = paymentDate
+        try? context.save()
+        dismiss()
     }
 }

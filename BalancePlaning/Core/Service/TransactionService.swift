@@ -200,6 +200,16 @@ struct TransactionService {
     }
 
     func deleteTransaction(_ transaction: Transaction) {
+        if let loanId = transaction.loanId {
+            let txDate = transaction.date
+            let txAmount = transaction.amount
+            let predicate = #Predicate<LoanPayment> { $0.loanId == loanId }
+            if let payments = try? context.fetch(FetchDescriptor<LoanPayment>(predicate: predicate)) {
+                for p in payments where Calendar.current.isDate(p.date, inSameDayAs: txDate) && p.totalAmount == txAmount {
+                    context.delete(p)
+                }
+            }
+        }
         context.delete(transaction)
 
         do {

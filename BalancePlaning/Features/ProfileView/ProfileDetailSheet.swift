@@ -111,7 +111,7 @@ struct ProfileDetailSheet: View {
                                             text: $confirmPassword)
 
                             if didAttemptSave && isChangingPassword && !passwordError.isEmpty {
-                                Label(passwordError, systemImage: "exclamationmark.circle.fill")
+                                Label(LocalizedStringKey(passwordError), systemImage: "exclamationmark.circle.fill")
                                     .font(.caption).foregroundStyle(.red)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .transition(.opacity.combined(with: .move(edge: .top)))
@@ -133,7 +133,7 @@ struct ProfileDetailSheet: View {
             .dismissKeyboardOnDrag()
 
             VStack(spacing: 12) {
-                PrimaryButton(title: showSuccess ? "Сохранено ✓" : "Сохранить") {
+                PrimaryButton(title: LocalizedStringKey(showSuccess ? "Сохранено ✓" : "Сохранить")) {
                     handleSave()
                 }
                 Button("Отмена", role: .cancel) { dismiss() }.foregroundStyle(.secondary)
@@ -145,7 +145,7 @@ struct ProfileDetailSheet: View {
         .animation(.easeInOut(duration: 0.2), value: passwordError)
     }
 
-    private func profileSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+    private func profileSection<Content: View>(title: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.subheadline)

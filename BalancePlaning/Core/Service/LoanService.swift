@@ -88,17 +88,95 @@ struct LoanService {
         )
         context.insert(tx)
 
-        // Для архивации проверяем по всем платежам (в т.ч. с будущей датой)
+        // Архивируем если фактически погашен весь основной долг
         let updatedPayments = allPayments + [payment]
         let schedule = generateSchedule(for: loan, payments: updatedPayments)
-        if let lastPaid = schedule.last(where: { $0.isPaid }) {
-            if lastPaid.remainingAfter <= 0.01 { loan.isArchived = true }
-        }
+        let paidPrincipal = schedule.filter { $0.isPaid }.reduce(Decimal.zero) { $0 + $1.principalPart }
+        if loan.originalAmount - paidPrincipal <= 0.01 { loan.isArchived = true }
         try? context.save()
     }
 
-    func deletePayment(_ payment: LoanPayment) {
+    func deletePayment(_ payment: LoanPayment, loan: Loan, allPayments: [LoanPayment]) {
+        let loanId       = payment.loanId
+        let paymentDate  = payment.date
+        let paymentAmount = payment.totalAmount
+        let userId       = payment.userId
+
+        // Удаляем связанную Transaction
+        let txPredicate = #Predicate<Transaction> { $0.userId == userId }
+        if let txs = try? context.fetch(FetchDescriptor<Transaction>(predicate: txPredicate)) {
+            for tx in txs
+            where tx.loanId == loanId
+               && Calendar.current.isDate(tx.date, inSameDayAs: paymentDate)
+               && tx.amount == paymentAmount {
+                context.delete(tx)
+            }
+        }
+
         context.delete(payment)
+
+        // Если кредит был закрыт — проверяем, не нужно ли его разархивировать
+        if loan.isArchived {
+            let remaining = allPayments.filter { $0.id != payment.id }
+            if remainingPrincipal(for: loan, payments: remaining) > 0.01 {
+                loan.isArchived = false
+            }
+        }
+
+        try? context.save()
+    }
+
+    /// Создаёт кредит и сразу все запланированные платежи (операции).
+    func addLoanWithSchedule(name: String, originalAmount: Decimal, interestRate: Decimal,
+                              termMonths: Int, startDate: Date, paymentDay: Int, currency: String,
+                              firstPaymentDate: Date?, monthlyPaymentOverride: Decimal?,
+                              scheduledEntries: [(date: Date, amount: Decimal)]) {
+        guard let uid = currentUserId() else { return }
+        let payment = monthlyPaymentOverride ?? LoanService.annuityPayment(
+            principal: originalAmount, annualRate: interestRate, months: termMonths)
+        let loan = Loan(userId: uid, name: name, originalAmount: originalAmount,
+                        interestRate: interestRate, termMonths: termMonths,
+                        startDate: startDate, paymentDay: paymentDay,
+                        monthlyPayment: payment, currency: currency,
+                        firstPaymentDate: firstPaymentDate)
+        context.insert(loan)
+        for entry in scheduledEntries {
+            let lp = LoanPayment(loanId: loan.id, userId: uid, date: entry.date,
+                                  totalAmount: entry.amount, isPrepayment: false,
+                                  prepaymentType: nil, fromAccountId: nil)
+            context.insert(lp)
+            let tx = Transaction(fromAccount: nil, userId: uid, amount: entry.amount,
+                                 date: entry.date, type: .expense,
+                                 note: "Платёж по кредиту: \(name)", loanId: loan.id)
+            context.insert(tx)
+        }
+        try? context.save()
+        // Проверка архивации
+        let loanId = loan.id
+        let pred = #Predicate<LoanPayment> { $0.loanId == loanId }
+        if let created = try? context.fetch(FetchDescriptor<LoanPayment>(predicate: pred)) {
+            let schedule = generateSchedule(for: loan, payments: created)
+            let paidPrincipal = schedule.filter { $0.isPaid }.reduce(Decimal.zero) { $0 + $1.principalPart }
+            if loan.originalAmount - paidPrincipal <= 0.01 { loan.isArchived = true }
+            try? context.save()
+        }
+    }
+
+    /// Меняет дату платежа и связанной транзакции
+    func revertPaymentDate(_ payment: LoanPayment, to date: Date) {
+        let loanId = payment.loanId
+        let currentDate = payment.date
+        let amount = payment.totalAmount
+        let userId = payment.userId
+        let predicate = #Predicate<Transaction> { $0.userId == userId }
+        if let txs = try? context.fetch(FetchDescriptor<Transaction>(predicate: predicate)) {
+            for tx in txs where tx.loanId == loanId
+                && Calendar.current.isDate(tx.date, inSameDayAs: currentDate)
+                && tx.amount == amount {
+                tx.date = date
+            }
+        }
+        payment.date = date
         try? context.save()
     }
 
@@ -171,8 +249,9 @@ struct LoanService {
 
             guard principal > 0.001 else { break }
 
-            // Плановый платёж — следующий в очереди, порядок строго последовательный
-            let matched = regularQueue.isEmpty ? nil : regularQueue.removeFirst()
+            // Плановый платёж — ищем в окне (prevDate, schedDate] по дате
+            let matchedIndex = regularQueue.firstIndex(where: { $0.date > prevDate && $0.date <= schedDate })
+            let matched = matchedIndex.map { regularQueue.remove(at: $0) }
 
             let interest = principal * r
             var principalPart = currentMonthlyPayment - interest
@@ -187,7 +266,7 @@ struct LoanService {
                 principalPart: Decimal(principalPart).rounded2(),
                 interestPart: Decimal(interest).rounded2(),
                 remainingAfter: Decimal(principal).rounded2(),
-                isPaid: matched != nil,
+                isPaid: matched.map { $0.date <= Date() } ?? false,
                 isPrepayment: false,
                 linkedPaymentId: matched?.id
             ))
@@ -195,17 +274,15 @@ struct LoanService {
             if principal <= 0.001 { break }
         }
 
-        return entries
+        return entries.filter { $0.totalAmount > 0 }
     }
 
-    /// Остаток долга — учитываются только платежи с датой ≤ сегодня.
+    /// Остаток долга — сумма principalPart по фактически оплаченным записям (≤ сегодня).
     func remainingPrincipal(for loan: Loan, payments: [LoanPayment]) -> Decimal {
         let paidToDate = payments.filter { $0.date <= Date.now }
         let schedule = generateSchedule(for: loan, payments: paidToDate)
-        if let lastPaid = schedule.last(where: { $0.isPaid }) {
-            return lastPaid.remainingAfter
-        }
-        return loan.originalAmount
+        let paidPrincipal = schedule.filter { $0.isPaid }.reduce(Decimal.zero) { $0 + $1.principalPart }
+        return max(.zero, loan.originalAmount - paidPrincipal)
     }
 
     /// Текущий плановый платёж — на основе платежей ≤ сегодня.

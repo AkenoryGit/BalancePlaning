@@ -14,16 +14,19 @@ struct CurrencyInfo: Identifiable {
     let name: String
     var id: String { code }
 
-    static let predefined: [CurrencyInfo] = [
-        .init(code: "RUB",  symbol: "₽", name: "Российский рубль"),
-        .init(code: "USD",  symbol: "$", name: "Доллар США"),
-        .init(code: "EUR",  symbol: "€", name: "Евро"),
-        .init(code: "GBP",  symbol: "£", name: "Фунт стерлингов"),
-        .init(code: "CNY",  symbol: "¥", name: "Китайский юань"),
-        .init(code: "USDT", symbol: "₮", name: "Tether"),
-        .init(code: "BTC",  symbol: "₿", name: "Bitcoin"),
-        .init(code: "ETH",  symbol: "Ξ", name: "Ethereum"),
-    ]
+    static var predefined: [CurrencyInfo] {
+        let b = AppSettings.shared.bundle
+        return [
+            .init(code: "RUB",  symbol: "₽", name: b.localizedString(forKey: "Российский рубль",  value: "Российский рубль",  table: nil)),
+            .init(code: "USD",  symbol: "$", name: b.localizedString(forKey: "Доллар США",          value: "Доллар США",          table: nil)),
+            .init(code: "EUR",  symbol: "€", name: b.localizedString(forKey: "Евро",                value: "Евро",                table: nil)),
+            .init(code: "GBP",  symbol: "£", name: b.localizedString(forKey: "Фунт стерлингов",    value: "Фунт стерлингов",    table: nil)),
+            .init(code: "CNY",  symbol: "¥", name: b.localizedString(forKey: "Китайский юань",      value: "Китайский юань",      table: nil)),
+            .init(code: "USDT", symbol: "₮", name: "Tether"),
+            .init(code: "BTC",  symbol: "₿", name: "Bitcoin"),
+            .init(code: "ETH",  symbol: "Ξ", name: "Ethereum"),
+        ]
+    }
 
     /// Символ по коду: сначала в предустановленных, затем в пользовательских, иначе сам код
     static func symbol(for code: String, custom: [Currency] = []) -> String {

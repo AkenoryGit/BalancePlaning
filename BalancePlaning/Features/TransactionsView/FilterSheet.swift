@@ -121,11 +121,9 @@ struct FilterSheet: View {
                 Section("Период") {
                     DatePicker("Начало", selection: $draft.startDate,
                                displayedComponents: [.date])
-                        .environment(\.locale, Locale(identifier: "ru_RU"))
                     DatePicker("Конец", selection: $draft.endDate,
                                in: draft.startDate...,
                                displayedComponents: [.date])
-                        .environment(\.locale, Locale(identifier: "ru_RU"))
                 }
 
                 // Тип операции
@@ -136,7 +134,7 @@ struct FilterSheet: View {
                             get: { draft.types.contains(type) },
                             set: { on in if on { draft.types.insert(type) } else { draft.types.remove(type) } }
                         )) {
-                            Label(type.displayName, systemImage: type.icon)
+                            Label(LocalizedStringKey(type.displayName), systemImage: type.icon)
                                 .foregroundStyle(type.color)
                         }
                         .tint(type.color)

@@ -10,6 +10,7 @@ import SwiftData
 
 struct TransactionDetailView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.locale) private var locale
     let transaction: Transaction
     @Binding var selectedTransaction: Transaction?
 
@@ -28,11 +29,27 @@ struct TransactionDetailView: View {
     }
 
     private var title: String {
+        let bundle = AppSettings.shared.bundle
+        if transaction.loanId != nil {
+            let note = transaction.note
+            let prepayPrefix = "Досрочное погашение: "
+            let regularPrefix = "Платёж по кредиту: "
+            if note.hasPrefix(prepayPrefix) {
+                let loanName = String(note.dropFirst(prepayPrefix.count))
+                let localPrefix = bundle.localizedString(forKey: "Досрочное погашение", value: "Досрочное погашение", table: nil)
+                return "\(localPrefix): \(loanName)"
+            } else if note.hasPrefix(regularPrefix) {
+                let loanName = String(note.dropFirst(regularPrefix.count))
+                let localPrefix = bundle.localizedString(forKey: "Платёж по кредиту", value: "Платёж по кредиту", table: nil)
+                return "\(localPrefix): \(loanName)"
+            }
+            return note.isEmpty ? bundle.localizedString(forKey: "Платёж по кредиту", value: "Платёж по кредиту", table: nil) : note
+        }
         switch transaction.type {
-        case .income:      return transaction.fromCategory?.name ?? "Пополнение"
-        case .expense:     return transaction.toCategory?.name ?? "Расход"
-        case .transaction: return "Перевод"
-        case .correction:  return "Корректировка"
+        case .income:      return transaction.fromCategory?.name ?? bundle.localizedString(forKey: "Пополнение", value: "Пополнение", table: nil)
+        case .expense:     return transaction.toCategory?.name ?? bundle.localizedString(forKey: "Расход", value: "Расход", table: nil)
+        case .transaction: return bundle.localizedString(forKey: "Перевод", value: "Перевод", table: nil)
+        case .correction:  return bundle.localizedString(forKey: "Корректировка", value: "Корректировка", table: nil)
         }
     }
 
@@ -62,9 +79,9 @@ struct TransactionDetailView: View {
                 .foregroundStyle(transaction.type.color)
 
                 Text(transaction.date, format: .dateTime
-                    .locale(Locale(identifier: "ru_RU"))
                     .day().month(.wide).year()
                     .hour().minute()
+                    .locale(locale)
                 )
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -144,14 +161,18 @@ struct TransactionDetailView: View {
             .padding(.bottom, 32)
         }
         .sheet(isPresented: $showEdit) {
-            EditTransactionView(
-                isRootPresented: $showEdit,
-                transaction: transaction,
-                onSaved: { action in
-                    pendingAction = action
-                    editWasSaved = true
-                }
-            )
+            if transaction.loanId != nil {
+                EditLoanPaymentSheet(transaction: transaction)
+            } else {
+                EditTransactionView(
+                    isRootPresented: $showEdit,
+                    transaction: transaction,
+                    onSaved: { action in
+                        pendingAction = action
+                        editWasSaved = true
+                    }
+                )
+            }
         }
         .onChange(of: showEdit) { _, isShowing in
             if !isShowing && editWasSaved {
@@ -183,7 +204,7 @@ struct TransactionDetailView: View {
 // MARK: - Строка деталей
 
 struct DetailRow: View {
-    let label: String
+    let label: LocalizedStringKey
     let value: String
 
     var body: some View {

@@ -211,6 +211,7 @@ private struct LoanCard: View {
     let loan: Loan
     let payments: [LoanPayment]
     let service: LoanService
+    @Environment(\.locale) private var locale
 
     private var remaining: Decimal { service.remainingPrincipal(for: loan, payments: payments) }
     private var monthly: Decimal { service.currentMonthlyPayment(for: loan, payments: payments) }
@@ -230,9 +231,16 @@ private struct LoanCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(loan.name)
                         .font(.subheadline.bold())
-                    Text(loan.isArchived ? "Погашен" : "\(LoanService.toDouble(loan.interestRate).formatted(.number.precision(.fractionLength(0...2))))% · \(loan.termMonths) мес.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Group {
+                        if loan.isArchived {
+                            Text("Погашен")
+                        } else {
+                            let mo = AppSettings.shared.bundle.localizedString(forKey: "мес.", value: "мес.", table: nil)
+                            Text("\(LoanService.toDouble(loan.interestRate).formatted(.number.precision(.fractionLength(0...2))))% · \(loan.termMonths) \(mo)")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
 
                 Spacer()
@@ -249,7 +257,8 @@ private struct LoanCard: View {
                     .foregroundStyle(Color(hex: "E74C3C"))
 
                     if !loan.isArchived {
-                        Text("\(monthly, format: .number.precision(.fractionLength(0...0))) \(CurrencyInfo.symbol(for: loan.currency))/мес")
+                        let moLabel = AppSettings.shared.bundle.localizedString(forKey: "/мес", value: "/мес", table: nil)
+                        Text("\(monthly, format: .number.precision(.fractionLength(0...0))) \(CurrencyInfo.symbol(for: loan.currency))\(moLabel)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -266,11 +275,14 @@ private struct LoanCard: View {
                     Text("Следующий платёж:")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(next, format: .dateTime.locale(Locale(identifier: "ru_RU")).day().month(.wide))
+                    Text(next, format: .dateTime.day().month(.wide).locale(locale))
                         .font(.caption.bold())
                         .foregroundStyle(.primary)
                     Spacer()
-                    Text("Осталось: \(months) мес.")
+                    let bundle = AppSettings.shared.bundle
+                    let mo = bundle.localizedString(forKey: "мес.", value: "мес.", table: nil)
+                    let remaining = bundle.localizedString(forKey: "Осталось", value: "Осталось", table: nil)
+                    Text("\(remaining): \(months) \(mo)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct MonthSelector: View {
     @Binding var selectedMonth: Date
+    @Environment(\.locale) private var locale
 
     var body: some View {
         HStack {
@@ -26,9 +27,9 @@ struct MonthSelector: View {
             Spacer()
 
             Text(selectedMonth.formatted(.dateTime
-                .locale(Locale(identifier: "ru_RU"))
                 .month(.wide)
                 .year(.defaultDigits)
+                .locale(locale)
             ))
             .font(.headline)
 

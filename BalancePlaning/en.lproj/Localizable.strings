@@ -1,0 +1,335 @@
+/* Tabs */
+"Главная" = "Home";
+"Аналитика" = "Analytics";
+"Кредиты" = "Loans";
+"Профиль" = "Profile";
+"Кошелёк" = "Wallet";
+
+/* Auth */
+"Вход" = "Sign In";
+"Войти" = "Sign In";
+"Регистрация" = "Register";
+"Зарегистрироваться" = "Register";
+"Создать аккаунт" = "Create Account";
+"Войдите в свой аккаунт" = "Sign in to your account";
+"Нет аккаунта?" = "Don't have an account?";
+"Уже есть аккаунт?" = "Already have an account?";
+"Логин" = "Login";
+"Пароль" = "Password";
+"Подтвердите пароль" = "Confirm Password";
+"Имя в приложении" = "Display Name";
+"Как вас называть?" = "What should we call you?";
+"Добро пожаловать" = "Welcome";
+"Добро пожаловать!" = "Welcome!";
+"Контроль финансов" = "Finance Control";
+"Следите за балансом и аналитикой" = "Track balance and analytics";
+"Начните вести учёт финансов" = "Start tracking your finances";
+"Пользователь не найден" = "User not found";
+"Неверный пароль" = "Incorrect password";
+"Такой аккаунт уже существует" = "This account already exists";
+"Пароли не совпадают" = "Passwords don't match";
+"Пароль менее 8 символов" = "Password is less than 8 characters";
+"Пароль минимум 8 символов" = "Password must be at least 8 characters";
+"Не удалось сохранить пароль" = "Failed to save password";
+"Ошибка чтения пароля" = "Failed to read password";
+"Неверный формат email" = "Invalid email format";
+"Введите email" = "Enter email";
+"Введите пароль" = "Enter password";
+"Выйти из аккаунта" = "Sign Out";
+
+/* Password change */
+"Смена пароля" = "Change Password";
+"Текущий пароль" = "Current Password";
+"Новый пароль" = "New Password";
+"Повторите новый пароль" = "Repeat New Password";
+"Неверный текущий пароль" = "Incorrect current password";
+"Новый пароль менее 8 символов" = "New password is less than 8 characters";
+"Пароль успешно обновлён" = "Password updated successfully";
+"Пароль успешно сохранен" = "Password saved successfully";
+"Сохранено ✓" = "Saved ✓";
+
+/* Onboarding */
+"Чтобы начать, перейдите во вкладку **Профиль** и создайте свой первый счёт — например, «Наличные» или «Карта»." = "To get started, go to the **Profile** tab and create your first account — e.g., «Cash» or «Card».";
+"Нажмите + чтобы добавить первую операцию" = "Tap + to add your first transaction";
+
+/* Common actions */
+"Добавить" = "Add";
+"Сохранить" = "Save";
+"Отмена" = "Cancel";
+"Отменить" = "Cancel";
+"Удалить" = "Delete";
+"Изменить" = "Edit";
+"Редактировать" = "Edit";
+"Создать" = "Create";
+"Применить" = "Apply";
+"Закрыть" = "Close";
+"Готово" = "Done";
+"Далее" = "Next";
+"Выбрать" = "Select";
+"Сбросить" = "Reset";
+"Сохранить изменения" = "Save Changes";
+"Показать все операции" = "Show All Transactions";
+
+/* Accounts */
+"Мои счета" = "My Accounts";
+"Новый счёт" = "New Account";
+"Название счёта" = "Account Name";
+"Начальный баланс" = "Starting Balance";
+"Текущий баланс" = "Current Balance";
+"Новый баланс" = "New Balance";
+"Общий баланс" = "Total Balance";
+"Корректировка баланса" = "Balance Correction";
+"Дата корректировки" = "Correction Date";
+"Скорректировать баланс" = "Adjust Balance";
+"Счёт" = "Account";
+"Счёт списания" = "Debit Account";
+"Выберите счёт зачисления" = "Select credit account";
+"Выберите счёт списания" = "Select debit account";
+"Введите название счёта" = "Enter account name";
+"Введите начальный баланс (можно 0 или отрицательный)" = "Enter starting balance (0 or negative is fine)";
+"Удалить счёт" = "Delete Account";
+"Удалить счёт и все операции" = "Delete account and all transactions";
+"Удалить счёт, операции — без счёта" = "Delete account, keep transactions without account";
+"Выберите, что сделать с операциями, привязанными к этому счёту" = "Choose what to do with transactions linked to this account";
+"Нет счетов" = "No accounts";
+
+/* Account groups */
+"Группа счетов" = "Account Group";
+"Название группы" = "Group Name";
+"Новая группа" = "New Group";
+"Без группы" = "No Group";
+"Удалить группу" = "Delete Group";
+"Удалить группу?" = "Delete Group?";
+"Счета из группы станут «Без группы»" = "Accounts in the group will become ungrouped";
+"Введите название группы" = "Enter group name";
+
+/* Categories */
+"Категории доходов" = "Income Categories";
+"Категории расходов" = "Expense Categories";
+"Категория" = "Category";
+"Новая категория" = "New Category";
+"Новая подкатегория" = "New Subcategory";
+"В категории «\(p.name)»" = "In category «\(p.name)»";
+"Корневая категория" = "Root Category";
+"Раздел" = "Section";
+"Добавить подкатегорию" = "Add Subcategory";
+"Системная категория — нельзя удалить" = "System category — cannot be deleted";
+"Удалить категорию" = "Delete Category";
+"Нет категорий" = "No categories";
+"Цвет категории" = "Category Color";
+"Иконка" = "Icon";
+"Введите название" = "Enter name";
+"Название" = "Name";
+
+/* Currencies */
+"Мои валюты" = "My Currencies";
+"Валюта" = "Currency";
+"Новая валюта" = "New Currency";
+"Добавить валюту" = "Add Currency";
+"Добавить свою валюту" = "Add Custom Currency";
+"Доллар, евро, другие" = "Dollar, euro, others";
+"Российский рубль" = "Russian Ruble";
+"Доллар США" = "US Dollar";
+"Евро" = "Euro";
+"Фунт стерлингов" = "British Pound";
+"Китайский юань" = "Chinese Yuan";
+"Код (напр. MEME)" = "Code (e.g. MEME)";
+"Символ (напр. M)" = "Symbol (e.g. M)";
+"Название (напр. Memecoin)" = "Name (e.g. Memecoin)";
+"Введите код валюты" = "Enter currency code";
+"Введите символ" = "Enter symbol";
+
+/* Transactions */
+"Новая операция" = "New Transaction";
+"Тип операции" = "Transaction Type";
+"Тип" = "Type";
+"Доход" = "Income";
+"Расход" = "Expense";
+"Перевод" = "Transfer";
+"Корректировка" = "Correction";
+"Сумма" = "Amount";
+"Дата" = "Date";
+"Заметка" = "Note";
+"Заметка (необязательно)" = "Note (optional)";
+"Направление" = "Direction";
+"Направить на" = "Redirect to";
+"На счёт" = "To Account";
+"Зачислить на счёт" = "Credit to Account";
+"Списать со счёта" = "Debit from Account";
+"Со счёта" = "From Account";
+"Списание" = "Debit";
+"Зачислено" = "Credited";
+"Получает" = "Receives";
+"Добавить расход" = "Add Expense";
+"Добавить пополнение" = "Add Income";
+"Добавить перевод" = "Add Transfer";
+"Новый расход" = "New Expense";
+"Новое пополнение" = "New Income";
+"Новый перевод" = "New Transfer";
+"Изменить расход" = "Edit Expense";
+"Изменить пополнение" = "Edit Income";
+"Изменить перевод" = "Edit Transfer";
+"Удалить операцию" = "Delete Transaction";
+"Доход, возврат средств" = "Income, Refunds";
+"Оплата, покупки, траты" = "Payments, Purchases, Expenses";
+"Между вашими счетами" = "Between Your Accounts";
+"Счета не должны совпадать" = "Accounts must be different";
+"Выберите категорию" = "Select category";
+"Выберите счёт" = "Select account";
+"Введите сумму больше нуля" = "Enter an amount greater than zero";
+"Заполните все обязательные поля корректными значениями" = "Fill in all required fields correctly";
+"Введите корректную сумму" = "Enter a valid amount";
+"Пополнение" = "Top Up";
+"За день" = "For the Day";
+"Все" = "All";
+"За период" = "For Period";
+"Доходы" = "Income";
+"Расходы" = "Expenses";
+"Операций ещё нет" = "No transactions yet";
+"Операций за этот день нет" = "No transactions for this day";
+"Нет операций по фильтру" = "No transactions matching filter";
+"Добавьте операции чтобы увидеть аналитику" = "Add transactions to see analytics";
+"Добавьте первую операцию кнопкой «+»" = "Add your first transaction with the «+» button";
+
+/* Recurring transactions */
+"Повторяется" = "Repeats";
+"Повторяющаяся" = "Recurring";
+"Интервал" = "Interval";
+"Один раз" = "Once";
+"Ежедневно" = "Daily";
+"Каждую неделю" = "Weekly";
+"Каждые 2 недели" = "Every 2 weeks";
+"Каждый месяц" = "Monthly";
+"Каждые Х дней" = "Every N days";
+"По дням" = "By days";
+"Количество дней" = "Number of Days";
+"Конец" = "End";
+"Не указывать" = "Not specified";
+"Период" = "Period";
+"Начало" = "Start";
+"До" = "To";
+"От" = "From";
+"Изменить повторяющуюся операцию?" = "Edit recurring transaction?";
+"Удалить повторяющуюся операцию?" = "Delete recurring transaction?";
+"Только эту" = "Only this one";
+"Все последующие" = "This and following";
+"Не указана дата окончания для повторяющегося поступления" = "No end date set for recurring income";
+"Не указана дата окончания для повторяющейся оплаты" = "No end date set for recurring expense";
+"Не указана дата окончания для повторяющейся транзакции" = "No end date set for recurring transfer";
+"Нет запланированных операций" = "No scheduled transactions";
+"Создайте повторяющиеся операции,\nчтобы увидеть прогноз" = "Create recurring transactions\nto see the forecast";
+
+/* Priority */
+"Важность" = "Priority";
+"Обычная" = "Normal";
+"Важная" = "Important";
+"Обязательная" = "Mandatory";
+"· влияет на порядок в списке за день" = "· affects order in daily list";
+
+/* Analytics */
+"Баланс за месяц" = "Monthly Balance";
+"Баланс" = "Balance";
+"Топ доходов" = "Top Income";
+"Топ расходов" = "Top Expenses";
+"Нет данных за этот месяц" = "No data for this month";
+"Платежи по кредитам" = "Loan Payments";
+"Показывать в аналитике" = "Show in analytics";
+"Попробуйте изменить период или фильтры" = "Try changing the period or filters";
+"Предварительный расчёт" = "Preliminary Calculation";
+
+/* Forecast */
+"Прогноз баланса" = "Balance Forecast";
+"Баланс уйдёт в минус ~" = "Balance goes negative ~";
+"На основе запланированных операций · 6 месяцев" = "Based on scheduled transactions · 6 months";
+"Создайте счёт в разделе «Профиль»" = "Create an account in the Profile section";
+
+/* Filters */
+"Фильтры" = "Filters";
+/* Loans */
+"Кредит" = "Loan";
+"Новый кредит" = "New Loan";
+"Создать кредит" = "Create Loan";
+"Редактировать кредит" = "Edit Loan";
+"Удалить кредит" = "Delete Loan";
+"Кредитов нет" = "No Loans";
+"Нет активных кредитов" = "No Active Loans";
+"Добавьте кредит в разделе «Кредиты»" = "Add a loan in the Loans section";
+"Добавьте кредит или ипотеку,\nчтобы отслеживать платежи" = "Add a loan or mortgage\nto track payments";
+"Закрытые кредиты (\(archivedLoans.count))" = "Closed Loans (\(archivedLoans.count))";
+"Остаток долга" = "Remaining Debt";
+"Остаток: " = "Remaining: ";
+"Осн:" = "Princ:";
+"Проц:" = "Int:";
+"Общий долг" = "Total Debt";
+"Сумма кредита" = "Loan Amount";
+"Процентная ставка" = "Interest Rate";
+"Процентная ставка (% годовых)" = "Interest Rate (% per year)";
+"годовых" = "p.a.";
+"Срок" = "Term";
+"Срок (в месяцах)" = "Term (months)";
+"мес." = "mo.";
+"Дата выдачи" = "Issue Date";
+"Дата первого платежа" = "First Payment Date";
+"Дата платежа" = "Payment Date";
+"Число оплаты" = "Payment Day";
+"Последнее число" = "Last day";
+"Последнее число месяца" = "Last day of month";
+"Ежемесячный платёж" = "Monthly Payment";
+"Платёж/мес" = "Payment/mo";
+"Переплата" = "Overpayment";
+"Осталось" = "Remaining";
+"Кредит погашен" = "Loan Repaid";
+"Погашен" = "Repaid";
+"График платежей" = "Payment Schedule";
+"Плановый платёж" = "Scheduled Payment";
+"Плановый или досрочный платёж" = "Scheduled or Early Payment";
+"Внести платёж" = "Make Payment";
+"Редактировать платёж" = "Edit Payment";
+"Досрочное погашение" = "Early Repayment";
+"Досрочный" = "Early";
+"Уменьш. платёж" = "Reduce Payment";
+"Уменьш. срок" = "Reduce Term";
+"С переплатой" = "With Overpayment";
+"Платёж по кредиту" = "Loan Payment";
+"Платёж до" = "Payment Before";
+"Платёж после" = "Payment After";
+"Долг до" = "Debt Before";
+"Долг после" = "Debt After";
+"Срок до" = "Term Before";
+"Срок после" = "Term After";
+"Остаток: %@ %@/мес" = "Remaining: %@ %@/mo";
+"Все включённые платежи создадутся как операции." = "All included payments will be created as transactions.";
+"Удалятся все платежи по этому кредиту" = "All payments for this loan will be deleted";
+"Название (напр., Ипотека Сбербанк)" = "Name (e.g., Sberbank Mortgage)";
+"Выполнен" = "Completed";
+
+"Следующий платёж:" = "Next payment:";
+"Осталось:" = "Remaining:";
+"/мес" = "/mo";
+
+/* Profile */
+"Аккаунт" = "Account";
+"Настройки" = "Settings";
+"Оформление" = "Appearance";
+
+/* Settings — theme */
+"Системная" = "System";
+"Светлая" = "Light";
+"Тёмная" = "Dark";
+
+/* Notifications */
+"Уведомления" = "Notifications";
+"Ежедневное напоминание" = "Daily Reminder";
+"Время напоминания" = "Reminder Time";
+"Каждый день в выбранное время придёт напоминание внести траты" = "You'll receive a daily reminder to log your expenses at the chosen time";
+"Напоминание" = "Reminder";
+"Пора внести траты за день" = "Time to log your daily expenses";
+"Уведомления отключены" = "Notifications Disabled";
+"Открыть настройки" = "Open Settings";
+"Разрешите уведомления в настройках iPhone, чтобы получать напоминания." = "Allow notifications in iPhone Settings to receive reminders.";
+
+/* Misc */
+"Неизвестно" = "Unknown";
+"Ноль" = "Zero";
+"Нет текущего пользователя" = "No current user";
+"BalancePlaning" = "BalancePlaning";

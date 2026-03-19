@@ -15,6 +15,7 @@ struct BalanceCard: View {
     let customCurrencies: [Currency]
     let onDateTap: () -> Void
     var onBalanceTap: (() -> Void)? = nil
+    @Environment(\.locale) private var locale
 
     var body: some View {
         VStack(spacing: 12) {
@@ -75,10 +76,10 @@ struct BalanceCard: View {
 
                     Button(action: onDateTap) {
                         Text(date.formatted(.dateTime
-                            .locale(Locale(identifier: "ru_RU"))
                             .day(.defaultDigits)
                             .month(.wide)
                             .year(.defaultDigits)
+                            .locale(locale)
                         ))
                         .font(.subheadline.bold())
                         .foregroundStyle(.white)

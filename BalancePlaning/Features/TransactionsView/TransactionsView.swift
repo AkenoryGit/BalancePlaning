@@ -10,6 +10,7 @@ import SwiftData
 
 struct TransactionsView: View {
     @Environment(\.modelContext) var context
+    @Environment(\.locale) private var locale
     @State private var date: Date = Date.now
     @State private var isPresented: Bool = false
     @State private var showDatePicker: Bool = false
@@ -44,7 +45,7 @@ struct TransactionsView: View {
 
     private var userTransactions: [Transaction] {
         guard let userId = currentUserId() else { return [] }
-        return allTransactions.filter { $0.userId == userId && $0.type != .correction }
+        return allTransactions.filter { $0.userId == userId }
     }
 
     private var userAccounts: [Account] {
@@ -100,21 +101,37 @@ struct TransactionsView: View {
         return dict.map { (code: $0.key, amount: $0.value) }.sorted { $0.amount > $1.amount }
     }
 
-    private var accountService: AccountService { AccountService(context: context) }
-
     private var combinedBalances: [(code: String, amount: Decimal)] {
         guard let uid = currentUserId() else { return [] }
         var dict: [String: Decimal] = [:]
-        for entry in accountService.totalBalancePerCurrency(at: date) {
-            dict[entry.code, default: .zero] += entry.amount
+
+        // Баланс по счетам — напрямую через @Query-свойства для реактивности
+        let includedAccounts = allAccounts.filter { $0.userId == uid && $0.isIncludedInBalance }
+        let cal = Calendar.current
+        let endOfDay = cal.startOfDay(for: date).addingTimeInterval(86400)
+        for account in includedAccounts {
+            let outgoing = allTransactions
+                .filter { $0.date < endOfDay
+                    && ($0.type == .transaction || $0.type == .expense || $0.type == .correction)
+                    && $0.fromAccount?.id == account.id }
+                .reduce(Decimal.zero) { $0 + $1.amount }
+            let incoming = allTransactions
+                .filter { $0.date < endOfDay
+                    && ($0.type == .transaction || $0.type == .income || $0.type == .correction)
+                    && $0.toAccount?.id == account.id }
+                .reduce(Decimal.zero) { $0 + ($1.toAmount ?? $1.amount) }
+            dict[account.currency, default: .zero] += account.balance + incoming - outgoing
         }
+
+        // Вычитаем остаток долга по активным кредитам
         let loanSvc = LoanService(context: context)
         let userLoans = allLoans.filter { $0.userId == uid && !$0.isArchived && $0.isIncludedInBalance }
         for loan in userLoans {
-            let payments = allLoanPayments.filter { $0.loanId == loan.id && $0.date <= date }
+            let payments = allLoanPayments.filter { $0.loanId == loan.id && $0.date < endOfDay }
             let remaining = loanSvc.remainingPrincipal(for: loan, payments: payments)
             dict[loan.currency, default: .zero] -= remaining
         }
+
         let predefinedOrder = CurrencyInfo.predefined.map { $0.code }
         return dict.sorted { a, b in
             let ai = predefinedOrder.firstIndex(of: a.key) ?? Int.max
@@ -157,7 +174,7 @@ struct TransactionsView: View {
                         // Переключатель режима
                         Picker("", selection: $viewMode) {
                             ForEach(TransactionViewMode.allCases, id: \.self) { mode in
-                                Text(mode.label).tag(mode)
+                                Text(LocalizedStringKey(mode.label)).tag(mode)
                             }
                         }
                         .pickerStyle(.segmented)
@@ -171,14 +188,14 @@ struct TransactionsView: View {
                                         .foregroundStyle(AppTheme.Colors.accent)
                                     VStack(alignment: .leading, spacing: 1) {
                                         HStack(spacing: 4) {
-                                            Text(filter.startDate, format: .dateTime.day(.twoDigits).month(.twoDigits).year())
+                                            Text(filter.startDate, format: .dateTime.day(.twoDigits).month(.twoDigits).year().locale(locale))
                                             Text("—")
-                                            Text(filter.endDate, format: .dateTime.day(.twoDigits).month(.twoDigits).year())
+                                            Text(filter.endDate, format: .dateTime.day(.twoDigits).month(.twoDigits).year().locale(locale))
                                         }
                                         .font(.subheadline.bold())
                                         .foregroundStyle(.primary)
                                         if filter.activeFilterCount > 0 {
-                                            Text("Ещё \(filter.activeFilterCount) фильтр\(filterSuffix(filter.activeFilterCount))")
+                                            Text(filterCountLabel(filter.activeFilterCount))
                                                 .font(.caption)
                                                 .foregroundStyle(AppTheme.Colors.accent)
                                         }
@@ -276,9 +293,13 @@ struct TransactionsView: View {
         }
     }
 
-    private func filterSuffix(_ n: Int) -> String {
-        if n == 1 { return "" }
-        if n < 5  { return "а" }
-        return "ов"
+    private func filterCountLabel(_ n: Int) -> String {
+        let bundle = AppSettings.shared.bundle
+        if bundle != Bundle.main {
+            return "\(n) more filter\(n == 1 ? "" : "s")"
+        }
+        let suffix: String
+        if n == 1 { suffix = "" } else if n < 5 { suffix = "а" } else { suffix = "ов" }
+        return "Ещё \(n) фильтр\(suffix)"
     }
 }

@@ -86,9 +86,10 @@
 				};
 			};
 			buildConfigurationList = D00BEC072F3313C4000DC587 /* Build configuration list for PBXProject "BalancePlaning" */;
-			developmentRegion = en;
+			developmentRegion = ru;
 			hasScannedForEncodings = 0;
 			knownRegions = (
+				ru,
 				en,
 				Base,
 			);

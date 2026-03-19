@@ -10,7 +10,7 @@ import SwiftData
 
 struct AmountInputCard: View {
     let icon: String
-    let typeLabel: String
+    let typeLabel: LocalizedStringKey
     let color: Color
     @Binding var amount: String
     var showError: Bool = false
@@ -73,7 +73,7 @@ struct ScheduleSection: View {
                     Image(systemName: isRecurring ? "repeat.circle.fill" : "calendar.circle.fill")
                         .foregroundStyle(AppTheme.Colors.accent)
                         .frame(width: 20)
-                    Text(isRecurring ? "Повторяется" : "Один раз")
+                    Text(LocalizedStringKey(isRecurring ? "Повторяется" : "Один раз"))
                         .foregroundStyle(.primary)
                 }
             }
@@ -88,7 +88,7 @@ struct ScheduleSection: View {
                     Spacer()
                     Picker("", selection: $interval) {
                         ForEach(RecurringInterval.allCases, id: \.self) { i in
-                            Text(i.displayName).tag(Optional(i))
+                            Text(LocalizedStringKey(i.displayName)).tag(Optional(i))
                         }
                     }
                     .labelsHidden()
@@ -138,7 +138,6 @@ struct ScheduleSection: View {
                         displayedComponents: [.date]
                     )
                     .datePickerStyle(.compact)
-                    .environment(\.locale, Locale(identifier: "ru_RU"))
                     .labelsHidden()
                 }
                 .padding(.horizontal, 16)
@@ -152,13 +151,12 @@ struct ScheduleSection: View {
         .animation(.easeInOut(duration: 0.15), value: interval == .everyNDays)
     }
 
-    private func scheduleDateRow(label: String, date: Binding<Date>) -> some View {
+    private func scheduleDateRow(label: LocalizedStringKey, date: Binding<Date>) -> some View {
         HStack {
             Text(label)
             Spacer()
             DatePicker("", selection: date, displayedComponents: [.date])
                 .datePickerStyle(.compact)
-                .environment(\.locale, Locale(identifier: "ru_RU"))
                 .labelsHidden()
         }
         .padding(.horizontal, 16)
@@ -189,7 +187,7 @@ struct PrioritySection: View {
                     Button {
                         withAnimation(.easeInOut(duration: 0.15)) { priority = p }
                     } label: {
-                        Text(p.displayName)
+                        Text(LocalizedStringKey(p.displayName))
                             .font(.subheadline)
                             .fontWeight(priority == p ? .semibold : .regular)
                             .foregroundStyle(priority == p ? .white : .primary)
@@ -212,7 +210,7 @@ struct PrioritySection: View {
 // MARK: - Нижняя кнопка сохранения
 
 struct TransactionSaveBar: View {
-    let label: String
+    let label: LocalizedStringKey
     let color: Color
     let action: () -> Void
 
@@ -246,10 +244,10 @@ struct TransactionSaveBar: View {
 func pickerRow<MenuContent: View>(
     icon: String,
     iconColor: Color,
-    label: String,
+    label: LocalizedStringKey,
     value: String?,
     hasError: Bool,
-    errorText: String,
+    errorText: LocalizedStringKey,
     @ViewBuilder menuContent: () -> MenuContent
 ) -> some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -263,8 +261,10 @@ func pickerRow<MenuContent: View>(
                 Text(label)
                     .foregroundStyle(.primary)
                 Spacer()
-                Text(value ?? "Выбрать")
-                    .foregroundStyle(hasError ? .red : .secondary)
+                Group {
+                    if let v = value { Text(v) } else { Text("Выбрать") }
+                }
+                .foregroundStyle(hasError ? .red : .secondary)
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.caption2)

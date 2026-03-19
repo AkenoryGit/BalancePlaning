@@ -16,12 +16,12 @@ class AccountService {
         self.context = context
     }
     
-    func addAccount(accountName: String, startBalance: Decimal, groupId: UUID? = nil, currency: String = "RUB") {
+    func addAccount(accountName: String, startBalance: Decimal, groupId: UUID? = nil, currency: String = "RUB", icon: String = "") {
         guard let uuidString = currentUserId() else {
             print("Нет текущего пользователя")
             return
         }
-        let newAccount = Account(id: UUID(), userId: uuidString, name: accountName, balance: startBalance, groupId: groupId, currency: currency)
+        let newAccount = Account(id: UUID(), userId: uuidString, name: accountName, balance: startBalance, groupId: groupId, currency: currency, icon: icon)
 
         context.insert(newAccount)
 

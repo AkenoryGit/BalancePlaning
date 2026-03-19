@@ -16,6 +16,7 @@ struct ForecastSection: View {
     let customCurrencies: [Currency]
 
     @State private var selectedCurrency: String = ""
+    @Environment(\.locale) private var locale
 
     // Валюты, задействованные в стартовых балансах или будущих транзакциях
     private var availableCurrencies: [String] {
@@ -102,7 +103,7 @@ struct ForecastSection: View {
                 if let negDate = firstNegativeDate {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                        Text("Баланс уйдёт в минус ~\(negDate.formatted(.dateTime.locale(Locale(identifier: "ru_RU")).day().month(.wide).year()))")
+                        (Text("Баланс уйдёт в минус ~") + Text(negDate, format: .dateTime.day().month(.wide).year().locale(locale)))
                             .font(.caption.bold())
                     }
                     .foregroundStyle(.white)
@@ -143,7 +144,6 @@ struct ForecastSection: View {
                 .chartXAxis {
                     AxisMarks(values: .automatic(desiredCount: 4)) {
                         AxisValueLabel(format: .dateTime
-                            .locale(Locale(identifier: "ru_RU"))
                             .month(.abbreviated))
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.4))
                     }

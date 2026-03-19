@@ -20,6 +20,8 @@ class Category {
     var isDefault: Bool = false
     /// Цвет категории в формате hex (напр. "FF4B4B"); пусто = нет цвета
     var color: String = ""
+    /// SF Symbol name для иконки; пусто = иконка по умолчанию
+    var icon: String = ""
 
     init(
         id: UUID = UUID(),
@@ -28,7 +30,8 @@ class Category {
         type: CategoryType,
         parentId: UUID? = nil,
         isDefault: Bool = false,
-        color: String = ""
+        color: String = "",
+        icon: String = ""
     ) {
         self.id = id
         self.userId = userId
@@ -37,6 +40,7 @@ class Category {
         self.parentId = parentId
         self.isDefault = isDefault
         self.color = color
+        self.icon = icon
     }
 
     /// true, если категория является корневой (не подкатегория)

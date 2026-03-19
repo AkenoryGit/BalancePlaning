@@ -9,11 +9,13 @@ import SwiftData
 struct ProfileView: View {
     @Environment(\.modelContext) private var context
     @Binding var isLogged: Bool
+    @ObservedObject private var settings = AppSettings.shared
 
     @Query private var allCurrencies: [Currency]
     @State private var showAddCategorySheet: Bool = false
     @State private var showAddCurrencySheet: Bool = false
     @State private var showProfileDetail: Bool = false
+    @State private var showSettings: Bool = false
     @State private var type: CategoryType = .expense
 
     var userService: UserService { UserService(context: context) }
@@ -178,6 +180,13 @@ struct ProfileView: View {
             .background(AppTheme.Colors.pageBackground)
             .navigationTitle("Профиль")
             .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showSettings = true } label: {
+                        Image(systemName: "gearshape")
+                    }
+                }
+            }
         }
         .sheet(isPresented: $showAddCategorySheet) {
             AddCategorySheet(type: $type)
@@ -190,13 +199,16 @@ struct ProfileView: View {
                 ProfileDetailSheet(user: user)
             }
         }
+        .sheet(isPresented: $showSettings) {
+            AppSettingsSheet()
+        }
     }
 }
 
 // MARK: - Заголовок секции с кнопкой "+"
 
 struct ProfileSectionHeader: View {
-    let title: String
+    let title: LocalizedStringKey
     let onAdd: () -> Void
 
     var body: some View {

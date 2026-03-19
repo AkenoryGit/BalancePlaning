@@ -92,8 +92,8 @@ struct TransactionsCategoryView: View {
 struct TransactionTypeCard: View {
     let color: Color
     let icon: String
-    let title: String
-    let subtitle: String
+    let title: LocalizedStringKey
+    let subtitle: LocalizedStringKey
     let action: () -> Void
 
     var body: some View {

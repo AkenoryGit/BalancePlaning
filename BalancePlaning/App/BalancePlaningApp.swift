@@ -32,9 +32,20 @@ struct BalancePlaningApp: App {
         }
     }()
 
+    @StateObject private var settings = AppSettings.shared
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(settings)
+                .preferredColorScheme(settings.theme.colorScheme)
+                .environment(\.locale, settings.locale)
+                // Полная перестройка иерархии при смене языка — переводы подхватываются свежими Text
+                .id(settings.language.rawValue)
+                .onAppear {
+                    // Восстанавливаем расписание уведомлений после перезапуска
+                    NotificationService.rescheduleIfNeeded()
+                }
         }
         .modelContainer(container)
     }

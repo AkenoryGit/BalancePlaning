@@ -151,9 +151,10 @@ struct CategoryRow: View {
 
     var body: some View {
         let iconColor = categoryColor ?? accentColor
+        let displayIcon = (!isChild && !category.icon.isEmpty) ? category.icon : icon
         return Button(action: onTap) {
             HStack(spacing: 14) {
-                Image(systemName: icon)
+                Image(systemName: displayIcon)
                     .font(isChild ? .body : .title3)
                     .foregroundStyle(iconColor)
                     .frame(width: isChild ? 32 : 40, height: isChild ? 32 : 40)
@@ -165,7 +166,7 @@ struct CategoryRow: View {
                         .font(isChild ? .subheadline : .headline)
                         .foregroundStyle(.primary)
                     if !isChild && childCount > 0 {
-                        Text("\(childCount) подкатегори\(childCount == 1 ? "я" : childCount < 5 ? "и" : "й")")
+                        Text(subcategoryLabel)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -191,5 +192,15 @@ struct CategoryRow: View {
         .simultaneousGesture(
             LongPressGesture(minimumDuration: 0.5).onEnded { _ in onLongPress() }
         )
+    }
+
+    private var subcategoryLabel: String {
+        let bundle = AppSettings.shared.bundle
+        let n = childCount
+        if bundle != Bundle.main {
+            return "\(n) subcategor\(n == 1 ? "y" : "ies")"
+        }
+        let suffix = n == 1 ? "я" : n < 5 ? "и" : "й"
+        return "\(n) подкатегори\(suffix)"
     }
 }

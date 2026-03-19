@@ -52,7 +52,7 @@ struct AddLoanPaymentSheet: View {
                                 Image(systemName: isPrepayment ? "arrow.up.forward.circle.fill" : "calendar.circle.fill")
                                     .foregroundStyle(Color(hex: "E74C3C"))
                                     .frame(width: 20)
-                                Text(isPrepayment ? "Досрочное погашение" : "Плановый платёж")
+                                Text(LocalizedStringKey(isPrepayment ? "Досрочное погашение" : "Плановый платёж"))
                             }
                         }
                         .padding(.horizontal, 16).padding(.vertical, 14)
@@ -115,7 +115,6 @@ struct AddLoanPaymentSheet: View {
                             Spacer()
                             DatePicker("", selection: $paymentDate, displayedComponents: [.date])
                                 .labelsHidden()
-                                .environment(\.locale, Locale(identifier: "ru_RU"))
                         }
                         .padding(.horizontal, 16).padding(.vertical, 10)
                     }
@@ -136,8 +135,10 @@ struct AddLoanPaymentSheet: View {
                                         Button(acc.name) { selectedAccountId = acc.id }
                                     }
                                 } label: {
-                                    Text(selectedAccount?.name ?? "Не указывать")
-                                        .foregroundStyle(.secondary)
+                                    Group {
+                                        if let acc = selectedAccount { Text(acc.name) } else { Text("Не указывать") }
+                                    }
+                                    .foregroundStyle(.secondary)
                                     Image(systemName: "chevron.up.chevron.down")
                                         .font(.caption2)
                                         .foregroundStyle(.tertiary)
@@ -157,7 +158,7 @@ struct AddLoanPaymentSheet: View {
                 .padding(.bottom, 32)
             }
             .background(AppTheme.Colors.pageBackground)
-            .navigationTitle(isPrepayment ? "Досрочное погашение" : "Внести платёж")
+            .navigationTitle(LocalizedStringKey(isPrepayment ? "Досрочное погашение" : "Внести платёж"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -218,10 +219,11 @@ struct AddLoanPaymentSheet: View {
             Divider().padding(.horizontal, 16)
 
             if prepaymentType == .reduceTerm {
+                let moLabel = AppSettings.shared.bundle.localizedString(forKey: "мес.", value: "мес.", table: nil)
                 HStack {
-                    previewColumn(title: "Срок до", value: "\(beforeMonths) мес.")
+                    previewColumn(title: "Срок до", value: "\(beforeMonths) \(moLabel)")
                     Image(systemName: "arrow.right").foregroundStyle(.secondary)
-                    previewColumn(title: "Срок после", value: "\(afterMonths) мес.", highlight: true)
+                    previewColumn(title: "Срок после", value: "\(afterMonths) \(moLabel)", highlight: true)
                 }
                 .padding(.horizontal, 16).padding(.vertical, 10)
             } else {
@@ -238,7 +240,7 @@ struct AddLoanPaymentSheet: View {
         .padding(.horizontal)
     }
 
-    private func previewColumn(title: String, value: String, highlight: Bool = false) -> some View {
+    private func previewColumn(title: LocalizedStringKey, value: String, highlight: Bool = false) -> some View {
         VStack(spacing: 2) {
             Text(title).font(.caption2).foregroundStyle(.secondary)
             Text(value).font(.subheadline.bold())

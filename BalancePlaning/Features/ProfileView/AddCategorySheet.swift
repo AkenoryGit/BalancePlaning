@@ -16,6 +16,7 @@ struct AddCategorySheet: View {
 
     @State private var name: String = ""
     @State private var selectedColor: String = ""
+    @State private var selectedIcon: String = ""
     @Environment(\.dismiss)      private var dismiss
     @Environment(\.modelContext) private var context
 
@@ -36,7 +37,7 @@ struct AddCategorySheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
-                Text(isSubcategory ? "Новая подкатегория" : "Новая категория")
+                Text(LocalizedStringKey(isSubcategory ? "Новая подкатегория" : "Новая категория"))
                     .font(.title2.bold())
 
                 if let p = parent {
@@ -57,6 +58,19 @@ struct AddCategorySheet: View {
                     }
                     .pickerStyle(.segmented)
                     .padding(.horizontal)
+
+                    // Выбор иконки для корневой категории
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Иконка")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal)
+                        IconPickerView(selectedIcon: $selectedIcon,
+                                       icons: IconPalette.categoryIcons,
+                                       accentColor: selectedColor.isEmpty
+                                           ? (type == .income ? AppTheme.Colors.income : AppTheme.Colors.expense)
+                                           : Color(hex: selectedColor))
+                    }
 
                     // Выбор цвета для корневой категории
                     VStack(alignment: .leading, spacing: 8) {
@@ -110,7 +124,7 @@ struct AddCategorySheet: View {
                     if let p = parent {
                         service.addSubcategory(name: name, parent: p)
                     } else {
-                        service.addCategory(categoryName: name, type: type, color: selectedColor)
+                        service.addCategory(categoryName: name, type: type, color: selectedColor, icon: selectedIcon)
                     }
                     dismiss()
                 }
@@ -120,7 +134,7 @@ struct AddCategorySheet: View {
                     .foregroundStyle(.secondary)
             }
             .padding()
-            .presentationDetents([.medium])
+            .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
     }

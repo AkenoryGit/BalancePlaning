@@ -13,6 +13,7 @@ struct TransactionCard: View {
     var allCategories: [Category] = []
     var allGroups: [AccountGroup] = []
     var showDate: Bool = false
+    @Environment(\.locale) private var locale
 
     // Родительская категория для expense/income (nil если корневая)
     private var parentCategoryName: String? {
@@ -45,14 +46,27 @@ struct TransactionCard: View {
     private var isLoanPayment: Bool { transaction.loanId != nil }
 
     private var title: String {
+        let bundle = AppSettings.shared.bundle
         if isLoanPayment {
-            return transaction.note.isEmpty ? "Платёж по кредиту" : transaction.note
+            let note = transaction.note
+            let prepayPrefix = "Досрочное погашение: "
+            let regularPrefix = "Платёж по кредиту: "
+            if note.hasPrefix(prepayPrefix) {
+                let loanName = String(note.dropFirst(prepayPrefix.count))
+                let localPrefix = bundle.localizedString(forKey: "Досрочное погашение", value: "Досрочное погашение", table: nil)
+                return "\(localPrefix): \(loanName)"
+            } else if note.hasPrefix(regularPrefix) {
+                let loanName = String(note.dropFirst(regularPrefix.count))
+                let localPrefix = bundle.localizedString(forKey: "Платёж по кредиту", value: "Платёж по кредиту", table: nil)
+                return "\(localPrefix): \(loanName)"
+            }
+            return note.isEmpty ? bundle.localizedString(forKey: "Платёж по кредиту", value: "Платёж по кредиту", table: nil) : note
         }
         switch transaction.type {
-        case .income:      return transaction.fromCategory?.name ?? "Пополнение"
-        case .expense:     return transaction.toCategory?.name ?? "Расход"
-        case .transaction: return "Перевод"
-        case .correction:  return "Корректировка"
+        case .income:      return transaction.fromCategory?.name ?? bundle.localizedString(forKey: "Пополнение", value: "Пополнение", table: nil)
+        case .expense:     return transaction.toCategory?.name ?? bundle.localizedString(forKey: "Расход", value: "Расход", table: nil)
+        case .transaction: return bundle.localizedString(forKey: "Перевод", value: "Перевод", table: nil)
+        case .correction:  return bundle.localizedString(forKey: "Корректировка", value: "Корректировка", table: nil)
         }
     }
 
@@ -166,6 +180,7 @@ struct TransactionCard: View {
                             .day(.twoDigits)
                             .month(.twoDigits)
                             .year()
+                            .locale(locale)
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)

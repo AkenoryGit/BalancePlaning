@@ -19,6 +19,13 @@ struct CardModifier: ViewModifier {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+            .overlay {
+                if let tint {
+                    RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                        .inset(by: 0.75)
+                        .stroke(tint.opacity(0.55), lineWidth: 1.5)
+                }
+            }
             .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 4)
     }
 }

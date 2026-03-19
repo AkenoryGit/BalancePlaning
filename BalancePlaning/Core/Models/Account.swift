@@ -17,13 +17,16 @@ class Account {
     var groupId: UUID? = nil
     var currency: String = "RUB"
     var isIncludedInBalance: Bool = true
+    /// SF Symbol name для иконки счёта; пусто = иконка по умолчанию
+    var icon: String = ""
 
-    init(id: UUID = UUID(), userId: UUID, name: String, balance: Decimal, groupId: UUID? = nil, currency: String = "RUB") {
+    init(id: UUID = UUID(), userId: UUID, name: String, balance: Decimal, groupId: UUID? = nil, currency: String = "RUB", icon: String = "") {
         self.id = id
         self.userId = userId
         self.name = name
         self.balance = balance
         self.groupId = groupId
         self.currency = currency
+        self.icon = icon
     }
 }
