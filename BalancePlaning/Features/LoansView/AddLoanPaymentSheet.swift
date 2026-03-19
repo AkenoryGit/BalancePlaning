@@ -19,6 +19,7 @@ struct AddLoanPaymentSheet: View {
     @State private var amountStr: String = ""
     @State private var paymentDate: Date = Date()
     @State private var selectedAccountId: UUID? = nil
+    @State private var comment: String = ""
     @State private var showAmountError = false
 
     private var service: LoanService { LoanService(context: context) }
@@ -150,6 +151,18 @@ struct AddLoanPaymentSheet: View {
                         .padding(.horizontal)
                     }
 
+                    VStack(spacing: 0) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "text.alignleft")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 20)
+                            TextField("Комментарий (необязательно)", text: $comment)
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 14)
+                    }
+                    .cardStyle()
+                    .padding(.horizontal)
+
                     if isPrepayment, let amt = amount, amt > 0 {
                         prepaymentPreview(amount: amt)
                     }
@@ -268,7 +281,8 @@ struct AddLoanPaymentSheet: View {
             isPrepayment: isPrepayment,
             prepaymentType: isPrepayment ? prepaymentType : nil,
             fromAccount: selectedAccount,
-            allPayments: Array(allPayments)
+            allPayments: Array(allPayments),
+            comment: comment
         )
         dismiss()
     }

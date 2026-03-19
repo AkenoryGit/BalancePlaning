@@ -191,6 +191,7 @@ struct BalanceCorrectionSheet: View {
     let currentBalance: Decimal
 
     @State private var newBalanceString = ""
+    @State private var comment = ""
     @State private var date = Date.now
     @State private var didAttemptApply = false
 
@@ -257,12 +258,23 @@ struct BalanceCorrectionSheet: View {
             DatePicker("Дата корректировки", selection: $date, displayedComponents: [.date])
                 .padding(.horizontal).padding(.top, 12)
 
+            HStack(spacing: 12) {
+                Image(systemName: "text.alignleft")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+                TextField("Комментарий (необязательно)", text: $comment)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .background(Color(.tertiarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal).padding(.top, 12)
+
             Spacer()
 
             PrimaryButton(title: "Применить") {
                 didAttemptApply = true
                 guard let d = delta, isValid, d != 0 else { return }
-                TransactionService(context: context).addCorrection(account: account, delta: d, date: date)
+                TransactionService(context: context).addCorrection(account: account, delta: d, date: date, comment: comment)
                 dismiss()
             }
             .padding(.horizontal).padding(.bottom, 32)

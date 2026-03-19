@@ -147,7 +147,14 @@ struct TransactionCard: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    if !transaction.note.isEmpty && !isLoanPayment {
+                    if isLoanPayment {
+                        if !transaction.comment.isEmpty {
+                            Text(transaction.comment)
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
+                    } else if !transaction.note.isEmpty {
                         Text(transaction.note)
                             .font(.caption)
                             .foregroundStyle(.tertiary)

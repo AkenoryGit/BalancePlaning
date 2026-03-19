@@ -121,6 +121,7 @@ struct LoanPaymentFormView: View {
     @State private var amountStr: String = ""
     @State private var paymentDate: Date = Date()
     @State private var selectedAccountId: UUID? = nil
+    @State private var comment: String = ""
     @State private var showAmountError = false
 
     private var service: LoanService { LoanService(context: context) }
@@ -252,6 +253,19 @@ struct LoanPaymentFormView: View {
                     .padding(.horizontal)
                 }
 
+                // Комментарий
+                VStack(spacing: 0) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "text.alignleft")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 20)
+                        TextField("Комментарий (необязательно)", text: $comment)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 14)
+                }
+                .cardStyle()
+                .padding(.horizontal)
+
                 // Предварительный расчёт для досрочного платежа
                 if isPrepayment, let amt = amount, amt > 0 {
                     prepaymentPreview(amount: amt)
@@ -357,7 +371,8 @@ struct LoanPaymentFormView: View {
             isPrepayment: isPrepayment,
             prepaymentType: isPrepayment ? prepaymentType : nil,
             fromAccount: selectedAccount,
-            allPayments: Array(allPayments)
+            allPayments: Array(allPayments),
+            comment: comment
         )
         onSaved()
     }
@@ -377,13 +392,15 @@ struct EditLoanPaymentSheet: View {
     @State private var amountStr: String
     @State private var paymentDate: Date
     @State private var selectedAccountId: UUID?
+    @State private var comment: String
     @State private var showAmountError = false
 
     init(transaction: Transaction) {
         self.transaction = transaction
-        _amountStr     = State(initialValue: NSDecimalNumber(decimal: transaction.amount).stringValue)
-        _paymentDate   = State(initialValue: transaction.date)
+        _amountStr         = State(initialValue: NSDecimalNumber(decimal: transaction.amount).stringValue)
+        _paymentDate       = State(initialValue: transaction.date)
         _selectedAccountId = State(initialValue: transaction.fromAccount?.id)
+        _comment           = State(initialValue: transaction.comment)
     }
 
     private var userAccounts: [Account] {
@@ -471,6 +488,18 @@ struct EditLoanPaymentSheet: View {
                     }
                     .cardStyle()
                     .padding(.horizontal)
+
+                    VStack(spacing: 0) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "text.alignleft")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 20)
+                            TextField("Комментарий (необязательно)", text: $comment)
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 14)
+                    }
+                    .cardStyle()
+                    .padding(.horizontal)
                 }
                 .padding(.top, 16)
                 .padding(.bottom, 32)
@@ -505,6 +534,7 @@ struct EditLoanPaymentSheet: View {
         transaction.fromAccount = selectedAccount
         transaction.amount = amt
         transaction.date = paymentDate
+        transaction.comment = comment
         try? context.save()
         dismiss()
     }

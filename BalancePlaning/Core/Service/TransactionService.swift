@@ -187,13 +187,13 @@ struct TransactionService {
         }
     }
     
-    func addCorrection(account: Account, delta: Decimal, date: Date) {
+    func addCorrection(account: Account, delta: Decimal, date: Date, comment: String = "") {
         guard let userId = currentUserId(), delta != 0 else { return }
         let t: Transaction
         if delta > 0 {
-            t = Transaction(toAccount: account, userId: userId, amount: delta, date: date, type: .correction)
+            t = Transaction(toAccount: account, userId: userId, amount: delta, date: date, type: .correction, comment: comment)
         } else {
-            t = Transaction(fromAccount: account, userId: userId, amount: abs(delta), date: date, type: .correction)
+            t = Transaction(fromAccount: account, userId: userId, amount: abs(delta), date: date, type: .correction, comment: comment)
         }
         context.insert(t)
         try? context.save()

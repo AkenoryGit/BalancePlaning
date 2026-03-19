@@ -117,7 +117,12 @@ struct TransactionDetailView: View {
                         DetailRow(label: "Зачислено", value: "\(formatted) \(sym)")
                     }
                 }
-                if !transaction.note.isEmpty {
+                // Для кредитов и корректировок показываем поле comment, для остальных — note
+                if transaction.loanId != nil || transaction.type == .correction {
+                    if !transaction.comment.isEmpty {
+                        DetailRow(label: "Комментарий", value: transaction.comment)
+                    }
+                } else if !transaction.note.isEmpty {
                     DetailRow(label: "Заметка", value: transaction.note)
                 }
                 if transaction.recurringGroupId != nil {

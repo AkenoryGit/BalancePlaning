@@ -22,6 +22,11 @@ struct TransactionsView: View {
     @State private var pendingDeleteId: PersistentIdentifier?
     @State private var pendingDeleteClosure: (() -> Void)?
 
+    // Swipe selection
+    @State private var selectedIds: Set<PersistentIdentifier> = []
+    @State private var showDeleteAlert: Bool = false
+    @State private var showBatchDeleteAlert: Bool = false
+
     @Query private var allTransactions: [Transaction]
     @Query private var allCurrencies: [Currency]
     @Query private var allCategories: [Category]
@@ -29,6 +34,8 @@ struct TransactionsView: View {
     @Query private var allAccounts: [Account]
     @Query private var allLoans: [Loan]
     @Query private var allLoanPayments: [LoanPayment]
+
+    private var isSelecting: Bool { !selectedIds.isEmpty }
 
     private var userCurrencies: [Currency] {
         guard let uid = currentUserId() else { return [] }
@@ -105,7 +112,6 @@ struct TransactionsView: View {
         guard let uid = currentUserId() else { return [] }
         var dict: [String: Decimal] = [:]
 
-        // Баланс по счетам — напрямую через @Query-свойства для реактивности
         let includedAccounts = allAccounts.filter { $0.userId == uid && $0.isIncludedInBalance }
         let cal = Calendar.current
         let endOfDay = cal.startOfDay(for: date).addingTimeInterval(86400)
@@ -123,7 +129,6 @@ struct TransactionsView: View {
             dict[account.currency, default: .zero] += account.balance + incoming - outgoing
         }
 
-        // Вычитаем остаток долга по активным кредитам
         let loanSvc = LoanService(context: context)
         let userLoans = allLoans.filter { $0.userId == uid && !$0.isArchived && $0.isIncludedInBalance }
         for loan in userLoans {
@@ -160,7 +165,6 @@ struct TransactionsView: View {
                         )
                         .padding(.horizontal)
 
-                        // Итоги за день (только в режиме «за день»)
                         if viewMode == .day {
                             HStack(alignment: .top, spacing: 12) {
                                 MultiCurrencyPill(label: "Доходы", entries: dailyIncomeByCurrency,
@@ -171,7 +175,6 @@ struct TransactionsView: View {
                             .padding(.horizontal)
                         }
 
-                        // Переключатель режима
                         Picker("", selection: $viewMode) {
                             ForEach(TransactionViewMode.allCases, id: \.self) { mode in
                                 Text(LocalizedStringKey(mode.label)).tag(mode)
@@ -180,7 +183,6 @@ struct TransactionsView: View {
                         .pickerStyle(.segmented)
                         .padding(.horizontal)
 
-                        // Строка фильтра (в режиме «За период»)
                         if viewMode == .period {
                             Button { showFilterSheet = true } label: {
                                 HStack(spacing: 8) {
@@ -213,34 +215,39 @@ struct TransactionsView: View {
                             .padding(.horizontal)
                         }
 
-                        // Список транзакций
                         if shownTransactions.isEmpty {
                             EmptyTransactionsPlaceholder(viewMode: viewMode)
                                 .padding(.top, 40)
                         } else {
                             LazyVStack(spacing: 10) {
                                 ForEach(shownTransactions) { transaction in
-                                    TransactionCard(transaction: transaction,
-                                                    allCategories: userCategories,
-                                                    allGroups: userGroups,
-                                                    showDate: viewMode != .day)
-                                        .padding(.horizontal)
-                                        .onTapGesture { selectedTransaction = transaction }
-                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                            Button(role: .destructive) {
-                                                let service = TransactionService(context: context)
-                                                pendingDeleteClosure = { service.deleteTransaction(transaction) }
-                                                withAnimation(.default, completionCriteria: .logicallyComplete) {
-                                                    pendingDeleteId = transaction.persistentModelID
-                                                } completion: {
-                                                    pendingDeleteClosure?()
-                                                    pendingDeleteClosure = nil
-                                                    pendingDeleteId = nil
+                                    SwipeableTransactionRow(
+                                        transaction: transaction,
+                                        allCategories: userCategories,
+                                        allGroups: userGroups,
+                                        showDate: viewMode != .day,
+                                        isSelected: selectedIds.contains(transaction.persistentModelID),
+                                        onTap: {
+                                            if isSelecting {
+                                                withAnimation(.spring(duration: 0.2)) {
+                                                    toggleSelection(transaction)
                                                 }
-                                            } label: {
-                                                Label("Удалить", systemImage: "trash")
+                                            } else {
+                                                selectedTransaction = transaction
+                                            }
+                                        },
+                                        onDelete: {
+                                            let service = TransactionService(context: context)
+                                            pendingDeleteClosure = { service.deleteTransaction(transaction) }
+                                            pendingDeleteId = transaction.persistentModelID
+                                            showDeleteAlert = true
+                                        },
+                                        onToggleSelect: {
+                                            withAnimation(.spring(duration: 0.2)) {
+                                                toggleSelection(transaction)
                                             }
                                         }
+                                    )
                                 }
                             }
                         }
@@ -253,7 +260,7 @@ struct TransactionsView: View {
             .navigationTitle("Кошелёк")
             .navigationBarTitleDisplayMode(.large)
             .overlay(alignment: .bottomTrailing) {
-                if !hasNoAccounts {
+                if !hasNoAccounts && !isSelecting {
                     Button { isPresented = true } label: {
                         Image(systemName: "plus")
                             .font(.title2.bold())
@@ -270,8 +277,16 @@ struct TransactionsView: View {
                     }
                     .padding(.trailing, 20)
                     .padding(.bottom, 20)
+                    .transition(.scale.combined(with: .opacity))
                 }
             }
+            .safeAreaInset(edge: .bottom) {
+                if isSelecting {
+                    selectionBar
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(.spring(duration: 0.3), value: isSelecting)
         }
         .sheet(isPresented: $isPresented) {
             TransactionsCategoryView(isRootPresented: $isPresented)
@@ -288,9 +303,109 @@ struct TransactionsView: View {
         .sheet(isPresented: $showAccountsSheet) {
             AccountsSheetView()
         }
+        // Алерт: удаление одной операции (свайп вправо-влево)
+        .alert("Удалить операцию?", isPresented: $showDeleteAlert) {
+            Button("Удалить", role: .destructive) {
+                pendingDeleteClosure?()
+                pendingDeleteClosure = nil
+                pendingDeleteId = nil
+            }
+            Button("Отмена", role: .cancel) {
+                pendingDeleteId = nil
+                pendingDeleteClosure = nil
+            }
+        } message: {
+            Text("Операция удалится безвозвратно")
+        }
+        // Алерт: удаление выбранных операций
+        .alert("Удалить выбранные операции?", isPresented: $showBatchDeleteAlert) {
+            Button("Удалить", role: .destructive) {
+                deleteSelected()
+            }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text(batchDeleteMessage)
+        }
         .onChange(of: viewMode) { _, _ in
             date = Date()
+            selectedIds.removeAll()
         }
+    }
+
+    // MARK: - Selection bar
+
+    private var selectionBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 16) {
+                Button {
+                    withAnimation(.spring(duration: 0.3)) {
+                        selectedIds.removeAll()
+                    }
+                } label: {
+                    Text("Отменить")
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Text(selectionCountLabel)
+                    .font(.subheadline.bold())
+
+                Spacer()
+
+                Button {
+                    showBatchDeleteAlert = true
+                } label: {
+                    Label("Удалить", systemImage: "trash")
+                        .foregroundStyle(.red)
+                        .font(.subheadline.bold())
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+        }
+        .background(Color(.secondarySystemGroupedBackground))
+    }
+
+    // MARK: - Helpers
+
+    private func toggleSelection(_ transaction: Transaction) {
+        if selectedIds.contains(transaction.persistentModelID) {
+            selectedIds.remove(transaction.persistentModelID)
+        } else {
+            selectedIds.insert(transaction.persistentModelID)
+        }
+    }
+
+    private func deleteSelected() {
+        let service = TransactionService(context: context)
+        for transaction in shownTransactions where selectedIds.contains(transaction.persistentModelID) {
+            service.deleteTransaction(transaction)
+        }
+        selectedIds.removeAll()
+    }
+
+    private var selectionCountLabel: String {
+        let n = selectedIds.count
+        let bundle = AppSettings.shared.bundle
+        if bundle != Bundle.main {
+            return "\(n) selected"
+        }
+        let suffix: String
+        if n == 1 { suffix = "а" } else if n < 5 { suffix = "ы" } else { suffix = "" }
+        return "Выбрано \(n) операци\(suffix == "" ? "й" : suffix)"
+    }
+
+    private var batchDeleteMessage: String {
+        let n = selectedIds.count
+        let bundle = AppSettings.shared.bundle
+        if bundle != Bundle.main {
+            return "\(n) operation\(n == 1 ? "" : "s") will be deleted permanently"
+        }
+        let suffix: String
+        if n == 1 { suffix = "я" } else if n < 5 { suffix = "и" } else { suffix = "й" }
+        return "\(n) операци\(suffix) удалятся безвозвратно"
     }
 
     private func filterCountLabel(_ n: Int) -> String {

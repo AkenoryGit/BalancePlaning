@@ -66,7 +66,8 @@ struct LoanService {
 
     func addPayment(to loan: Loan, date: Date, amount: Decimal,
                     isPrepayment: Bool, prepaymentType: PrepaymentType?,
-                    fromAccount: Account?, allPayments: [LoanPayment]) {
+                    fromAccount: Account?, allPayments: [LoanPayment],
+                    comment: String = "") {
         guard let uid = currentUserId() else { return }
         let payment = LoanPayment(loanId: loan.id, userId: uid, date: date,
                                    totalAmount: amount, isPrepayment: isPrepayment,
@@ -84,6 +85,7 @@ struct LoanService {
             date: date,
             type: .expense,
             note: txNote,
+            comment: comment,
             loanId: loan.id
         )
         context.insert(tx)
@@ -197,17 +199,24 @@ struct LoanService {
     func generateSchedule(for loan: Loan, payments: [LoanPayment]) -> [LoanScheduleEntry] {
         let sorted = payments.filter { $0.loanId == loan.id }.sorted { $0.date < $1.date }
 
-        // Досрочные платежи — сопоставляются по дате (попадают в окно между плановыми)
         var prepaymentQueue = sorted.filter { $0.isPrepayment }
-        // Плановые платежи — гасятся строго по очереди, без привязки к дате
         var regularQueue    = sorted.filter { !$0.isPrepayment }
 
-        let r = LoanService.toDouble(loan.interestRate) / 100.0 / 12.0
+        // Российские банки начисляют проценты по фактическим дням: ставка / 365
+        let annualRate = LoanService.toDouble(loan.interestRate) / 100.0
+        let dailyRate  = annualRate / 365.0
+        // Для пересчёта платежа после досрочного (reducePayment) используем annual/12 — стандарт банков
+        let monthlyRate = annualRate / 12.0
+
         var principal = LoanService.toDouble(loan.originalAmount)
         var currentMonthlyPayment = LoanService.toDouble(loan.monthlyPayment)
 
         var entries: [LoanScheduleEntry] = []
         var paymentNumber = 1
+        // Дата последнего события — с неё считаем накопленные проценты
+        var lastDate = loan.startDate
+
+        let cal = Calendar.current
 
         for month in 1...600 {
             guard principal > 0.001 else { break }
@@ -220,13 +229,21 @@ struct LoanService {
             prepaymentQueue.removeAll { prepays.map(\.id).contains($0.id) }
 
             for pp in prepays {
+                // Проценты накоплены за фактические дни с последнего платежа
+                let days = cal.dateComponents([.day], from: lastDate, to: pp.date).day ?? 0
+                let accruedInterest = principal * dailyRate * Double(days)
+
                 let ppAmt = LoanService.toDouble(pp.totalAmount)
-                principal = max(0, principal - ppAmt)
+                // Сначала гасятся накопленные проценты, остаток идёт в тело долга
+                let interestPaid  = min(accruedInterest, ppAmt)
+                let principalPaid = max(0, ppAmt - interestPaid)
+                principal = max(0, principal - principalPaid)
+                lastDate = pp.date
 
                 if pp.prepaymentType == .reducePayment {
-                    let rem = LoanService.estimateMonths(principal: principal, payment: currentMonthlyPayment, r: r)
-                    if rem > 0 && r > 0 {
-                        currentMonthlyPayment = principal * r / (1.0 - pow(1.0 + r, -Double(rem)))
+                    let rem = LoanService.estimateMonths(principal: principal, payment: currentMonthlyPayment, r: monthlyRate)
+                    if rem > 0 && monthlyRate > 0 {
+                        currentMonthlyPayment = principal * monthlyRate / (1.0 - pow(1.0 + monthlyRate, -Double(rem)))
                     } else if rem > 0 {
                         currentMonthlyPayment = principal / Double(rem)
                     }
@@ -236,8 +253,8 @@ struct LoanService {
                     paymentNumber: paymentNumber,
                     date: pp.date,
                     totalAmount: pp.totalAmount,
-                    principalPart: pp.totalAmount,
-                    interestPart: .zero,
+                    principalPart: Decimal(principalPaid).rounded2(),
+                    interestPart: Decimal(interestPaid).rounded2(),
                     remainingAfter: Decimal(principal).rounded2(),
                     isPaid: true,
                     isPrepayment: true,
@@ -253,11 +270,15 @@ struct LoanService {
             let matchedIndex = regularQueue.firstIndex(where: { $0.date > prevDate && $0.date <= schedDate })
             let matched = matchedIndex.map { regularQueue.remove(at: $0) }
 
-            let interest = principal * r
+            // Проценты за фактические дни с последнего платежа/досрочки до даты платежа
+            let days = cal.dateComponents([.day], from: lastDate, to: schedDate).day ?? 0
+            let interest = principal * dailyRate * Double(days)
+
             var principalPart = currentMonthlyPayment - interest
             principalPart = max(0, min(principalPart, principal))
             let totalPaid = principalPart + interest
             principal = max(0, principal - principalPart)
+            lastDate = schedDate
 
             entries.append(LoanScheduleEntry(
                 paymentNumber: paymentNumber,

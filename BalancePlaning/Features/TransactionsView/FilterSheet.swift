@@ -31,13 +31,14 @@ struct TransactionFilter: Equatable {
     var types: Set<TransactionType> = []
     var accountIds: Set<UUID> = []
     var categoryIds: Set<UUID> = []
+    var loanIds: Set<UUID> = []
     var minAmount: String = ""
     var maxAmount: String = ""
     var currencies: Set<String> = []
 
     var activeFilterCount: Int {
         [!types.isEmpty, !accountIds.isEmpty, !categoryIds.isEmpty,
-         !minAmount.isEmpty || !maxAmount.isEmpty, !currencies.isEmpty]
+         !loanIds.isEmpty, !minAmount.isEmpty || !maxAmount.isEmpty, !currencies.isEmpty]
             .filter { $0 }.count
     }
 
@@ -56,6 +57,10 @@ struct TransactionFilter: Equatable {
         if !categoryIds.isEmpty {
             let ids = [t.fromCategory?.id, t.toCategory?.id].compactMap { $0 }
             guard ids.contains(where: { categoryIds.contains($0) }) else { return false }
+        }
+
+        if !loanIds.isEmpty {
+            guard let lid = t.loanId, loanIds.contains(lid) else { return false }
         }
 
         if !minAmount.isEmpty,
@@ -85,6 +90,7 @@ struct FilterSheet: View {
     @Query private var allAccounts: [Account]
     @Query private var allCategories: [Category]
     @Query private var allCurrencies: [Currency]
+    @Query private var allLoans: [Loan]
 
     @State private var draft: TransactionFilter
 
@@ -105,6 +111,11 @@ struct FilterSheet: View {
         guard let uid = currentUserId() else { return [] }
         return allCurrencies.filter { $0.userId == uid }
     }
+    private var userLoans: [Loan] {
+        guard let uid = currentUserId() else { return [] }
+        return allLoans.filter { $0.userId == uid }.sorted { $0.name < $1.name }
+    }
+
     private var availableCurrencies: [String] {
         let codes = Set(userAccounts.map { $0.currency })
         return codes.sorted { a, b in
@@ -166,6 +177,30 @@ struct FilterSheet: View {
                                     .font(cat.isRoot ? .body : .subheadline)
                             }
                             .tint(AppTheme.Colors.accent)
+                        }
+                    }
+                }
+
+                // Кредит
+                if !userLoans.isEmpty {
+                    Section("Кредит") {
+                        ForEach(userLoans) { loan in
+                            Toggle(isOn: Binding(
+                                get: { draft.loanIds.contains(loan.id) },
+                                set: { on in if on { draft.loanIds.insert(loan.id) } else { draft.loanIds.remove(loan.id) } }
+                            )) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "creditcard.fill")
+                                        .foregroundStyle(Color(hex: "E74C3C"))
+                                    Text(loan.name)
+                                    if loan.isArchived {
+                                        Text("Погашен")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .tint(Color(hex: "E74C3C"))
                         }
                     }
                 }
