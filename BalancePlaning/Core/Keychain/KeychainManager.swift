@@ -44,6 +44,38 @@ final class KeychainManager {
         print("Пароль успешно сохранен")
     }
     
+    // сохранение ответа на секретный вопрос (ключ отличается от ключа пароля суффиксом)
+    static func saveSecurityAnswer(_ answer: String, for id: UUID) throws {
+        let data = answer.lowercased().trimmingCharacters(in: .whitespaces).data(using: .utf8)!
+        let key = id.uuidString + "-securityAnswer"
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrAccount: key,
+            kSecValueData: data
+        ]
+        let status = SecItemAdd(query as CFDictionary, nil)
+        if status == errSecDuplicateItem {
+            let updateQuery: [CFString: Any] = [kSecClass: kSecClassGenericPassword, kSecAttrAccount: key]
+            SecItemUpdate(updateQuery as CFDictionary, [kSecValueData: data] as CFDictionary)
+        } else if status != errSecSuccess {
+            throw KeychainError.unowned(status: status)
+        }
+    }
+
+    // получение ответа на секретный вопрос
+    static func getSecurityAnswer(for id: UUID) -> String? {
+        let key = id.uuidString + "-securityAnswer"
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrAccount: key,
+            kSecReturnData: kCFBooleanTrue as Any
+        ]
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     // функция обновления пароля
     static func updatePassword(_ newPassword: String, for id: UUID) throws {
         let data = newPassword.data(using: .utf8)!

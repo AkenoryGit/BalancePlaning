@@ -17,6 +17,7 @@ struct AutorizationView: View {
     @State private var email: String = ""
     @State private var password: String = ""
     @State private var errorMessage: String = ""
+    @State private var showForgotPassword = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -61,14 +62,16 @@ struct AutorizationView: View {
 
                 AuthPrimaryButton(title: "Войти", action: attemptLogin)
 
-                HStack(spacing: 4) {
-                    Text("Нет аккаунта?")
-                        .foregroundStyle(.secondary)
-                    Button("Зарегистрироваться") {
-                        isRegistration = true
+                VStack(spacing: 12) {
+                        Button("Зарегистрироваться") {
+                            isRegistration = true
+                        }
+                        .foregroundStyle(AppTheme.Colors.accent)
+                        .fontWeight(.medium)
+                    Button("Забыли пароль?") {
+                        showForgotPassword = true
                     }
-                    .foregroundStyle(AppTheme.Colors.accent)
-                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
                 }
                 .font(.subheadline)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -82,6 +85,9 @@ struct AutorizationView: View {
                     .ignoresSafeArea(edges: .bottom)
             )
             .animation(.easeInOut(duration: 0.2), value: errorMessage)
+            .sheet(isPresented: $showForgotPassword) {
+                ForgotPasswordView(users: users)
+            }
         }
     }
 

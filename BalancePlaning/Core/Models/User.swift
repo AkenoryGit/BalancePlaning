@@ -14,6 +14,7 @@ final class User {
     @Attribute(.unique) var id: UUID
     @Attribute(.unique) var login: String
     var displayName: String = ""
+    var securityQuestion: String = ""
 
     init(login: String, id: UUID = UUID()) {
         self.login = login

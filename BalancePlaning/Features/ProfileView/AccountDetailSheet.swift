@@ -49,8 +49,6 @@ struct AccountDetailSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHandle().padding(.bottom, 24)
-
             VStack(spacing: 6) {
                 Image(systemName: selectedIcon.isEmpty ? "creditcard.fill" : selectedIcon)
                     .font(.system(size: 44))
@@ -206,8 +204,6 @@ struct BalanceCorrectionSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHandle().padding(.bottom, 20)
-
             Text("Корректировка баланса")
                 .font(.title3.bold()).padding(.bottom, 4)
             Text(account.name)

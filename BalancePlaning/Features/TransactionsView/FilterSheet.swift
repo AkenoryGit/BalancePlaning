@@ -15,7 +15,7 @@ enum TransactionViewMode: Int, CaseIterable {
         switch self {
         case .day:    return "За день"
         case .all:    return "Все"
-        case .period: return "За период"
+        case .period: return "Фильтр"
         }
     }
 }
@@ -35,10 +35,12 @@ struct TransactionFilter: Equatable {
     var minAmount: String = ""
     var maxAmount: String = ""
     var currencies: Set<String> = []
+    var commentSearch: String = ""
 
     var activeFilterCount: Int {
         [!types.isEmpty, !accountIds.isEmpty, !categoryIds.isEmpty,
-         !loanIds.isEmpty, !minAmount.isEmpty || !maxAmount.isEmpty, !currencies.isEmpty]
+         !loanIds.isEmpty, !minAmount.isEmpty || !maxAmount.isEmpty,
+         !currencies.isEmpty, !commentSearch.isEmpty]
             .filter { $0 }.count
     }
 
@@ -75,6 +77,13 @@ struct TransactionFilter: Equatable {
         if !currencies.isEmpty {
             let c = t.fromAccount?.currency ?? t.toAccount?.currency ?? "RUB"
             guard currencies.contains(c) else { return false }
+        }
+
+        if !commentSearch.isEmpty {
+            let query = commentSearch.lowercased()
+            let inComment = t.comment.lowercased().contains(query)
+            let inNote    = t.note.lowercased().contains(query)
+            guard inComment || inNote else { return false }
         }
 
         return true
@@ -128,6 +137,26 @@ struct FilterSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                // Поиск по комментарию
+                Section {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Поиск по комментарию...", text: $draft.commentSearch)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                        if !draft.commentSearch.isEmpty {
+                            Button {
+                                draft.commentSearch = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
                 // Период
                 Section("Период") {
                     DatePicker("Начало", selection: $draft.startDate,

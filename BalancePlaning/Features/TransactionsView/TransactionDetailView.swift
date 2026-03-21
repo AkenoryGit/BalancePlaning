@@ -16,6 +16,7 @@ struct TransactionDetailView: View {
 
     @State private var showEdit: Bool = false
     @State private var showDeleteAlert: Bool = false
+    @State private var showConfirmDeleteAlert: Bool = false
     @State private var editWasSaved: Bool = false
     @State private var pendingAction: (() -> Void)?
 
@@ -151,9 +152,7 @@ struct TransactionDetailView: View {
                     if transaction.recurringGroupId != nil {
                         showDeleteAlert = true
                     } else {
-                        let service = TransactionService(context: context)
-                        pendingAction = { service.deleteTransaction(transaction) }
-                        selectedTransaction = nil
+                        showConfirmDeleteAlert = true
                     }
                 } label: {
                     Label("Удалить операцию", systemImage: "trash")
@@ -183,6 +182,16 @@ struct TransactionDetailView: View {
             if !isShowing && editWasSaved {
                 selectedTransaction = nil
             }
+        }
+        .alert("Удалить операцию?", isPresented: $showConfirmDeleteAlert) {
+            Button("Удалить", role: .destructive) {
+                let service = TransactionService(context: context)
+                pendingAction = { service.deleteTransaction(transaction) }
+                selectedTransaction = nil
+            }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Операция удалится безвозвратно")
         }
         .alert("Удалить повторяющуюся операцию?", isPresented: $showDeleteAlert) {
             Button("Только эту", role: .destructive) {

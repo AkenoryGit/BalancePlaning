@@ -145,9 +145,9 @@ struct AccountGroupSection: View {
                         ForEach(totals, id: \.code) { entry in
                             HStack(alignment: .firstTextBaseline, spacing: 2) {
                                 Text(entry.amount, format: .number.precision(.fractionLength(0...2)))
-                                    .font(.subheadline.bold()).foregroundStyle(AppTheme.Colors.accent)
+                                    .font(.headline.bold()).foregroundStyle(AppTheme.Colors.accent)
                                 Text(CurrencyInfo.symbol(for: entry.code, custom: customCurrencies))
-                                    .font(.caption.bold()).foregroundStyle(AppTheme.Colors.accent.opacity(0.8))
+                                    .font(.subheadline.bold()).foregroundStyle(AppTheme.Colors.accent.opacity(0.8))
                             }
                         }
                     }
@@ -181,9 +181,9 @@ struct AccountGroupSection: View {
 
                             HStack(alignment: .firstTextBaseline, spacing: 2) {
                                 Text(accountBalance(account), format: .number.precision(.fractionLength(0...2)))
-                                    .font(.subheadline.bold()).foregroundStyle(.primary)
+                                    .font(.headline.bold()).foregroundStyle(.primary)
                                 Text(CurrencyInfo.symbol(for: account.currency, custom: customCurrencies))
-                                    .font(.caption.bold()).foregroundStyle(.secondary)
+                                    .font(.subheadline.bold()).foregroundStyle(.secondary)
                             }
                             Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
                         }
@@ -218,9 +218,9 @@ struct AccountRowCard: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(balance, format: .number.precision(.fractionLength(0...2)))
-                    .font(.subheadline.bold()).foregroundStyle(AppTheme.Colors.accent)
+                    .font(.headline.bold()).foregroundStyle(AppTheme.Colors.accent)
                 Text(CurrencyInfo.symbol(for: account.currency, custom: customCurrencies))
-                    .font(.caption.bold()).foregroundStyle(AppTheme.Colors.accent.opacity(0.8))
+                    .font(.subheadline.bold()).foregroundStyle(AppTheme.Colors.accent.opacity(0.8))
             }
             Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
         }

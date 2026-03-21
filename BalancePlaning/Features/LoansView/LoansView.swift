@@ -12,7 +12,7 @@ struct LoansView: View {
     @Query private var allPayments: [LoanPayment]
     @Query private var allAccounts: [Account]
 
-    @State private var showAddLoan = false
+    @Binding var showAddLoan: Bool
     @State private var showArchived = false
 
     private var service: LoanService { LoanService(context: context) }
@@ -47,6 +47,14 @@ struct LoansView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+
+                    HStack {
+                        Text("Кредиты")
+                            .font(.largeTitle.bold())
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 4)
 
                     if activeLoans.isEmpty && archivedLoans.isEmpty {
                         emptyState
@@ -107,27 +115,16 @@ struct LoansView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 100)
             }
-            .background(AppTheme.Colors.pageBackground)
-            .navigationTitle("Кредиты")
-            .navigationBarTitleDisplayMode(.large)
-            .overlay(alignment: .bottomTrailing) {
-                Button { showAddLoan = true } label: {
-                    Image(systemName: "plus")
-                        .font(.title2.bold())
-                        .foregroundStyle(.white)
-                        .frame(width: 58, height: 58)
-                        .background(
-                            LinearGradient(
-                                colors: [AppTheme.Colors.accent, AppTheme.Colors.accentSecondary],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            )
-                        )
-                        .clipShape(Circle())
-                        .shadow(color: AppTheme.Colors.accent.opacity(0.4), radius: 10, x: 0, y: 5)
-                }
-                .padding(.trailing, 20)
-                .padding(.bottom, 20)
+            .refreshable {
+                let bm = SharedBudgetManager.shared
+                guard bm.isParticipant || bm.shareURL != nil else { return }
+                await CloudKitAutoSyncManager.shared.syncNowAsync()
             }
+            .background(AppTheme.Colors.pageBackground)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
+            .padding(.top, 8)
         }
         .sheet(isPresented: $showAddLoan) {
             AddLoanSheet()

@@ -10,6 +10,7 @@ import SwiftData
 
 @Model
 class Transaction {
+    var id: UUID = UUID()  // стабильный ключ для CloudKit (без .unique — иначе краш миграции)
     var fromAccount: Account?
     var fromCategory: Category?
     var toAccount: Account?
@@ -27,8 +28,10 @@ class Transaction {
     var note: String = ""
     var comment: String = ""           // пользовательский комментарий (для кредитов и корректировок)
     var loanId: UUID? = nil            // non-nil → транзакция создана из платежа по кредиту
+    var creatorName: String? = nil     // имя создателя (заполняется только в режиме семейного бюджета)
 
-    init(fromAccount: Account? = nil, fromCategory: Category? = nil,
+    init(id: UUID = UUID(),
+         fromAccount: Account? = nil, fromCategory: Category? = nil,
          toAccount: Account? = nil, toCategory: Category? = nil,
          userId: UUID, amount: Decimal, toAmount: Decimal? = nil,
          date: Date, type: TransactionType,
@@ -38,7 +41,9 @@ class Transaction {
          recurringIntervalDays: Int? = nil,
          note: String = "",
          comment: String = "",
-         loanId: UUID? = nil) {
+         loanId: UUID? = nil,
+         creatorName: String? = nil) {
+        self.id = id
         self.fromAccount = fromAccount
         self.fromCategory = fromCategory
         self.toAccount = toAccount
@@ -55,6 +60,7 @@ class Transaction {
         self.note = note
         self.comment = comment
         self.loanId = loanId
+        self.creatorName = creatorName
     }
 }
 

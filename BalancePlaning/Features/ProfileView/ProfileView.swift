@@ -30,6 +30,19 @@ struct ProfileView: View {
             ScrollView {
                 VStack(spacing: 20) {
 
+                    HStack {
+                        Text("Профиль")
+                            .font(.largeTitle.bold())
+                        Spacer()
+                        Button { showSettings = true } label: {
+                            Image(systemName: "gearshape")
+                                .font(.title3)
+                                .foregroundStyle(AppTheme.Colors.accent)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 4)
+
                     // Карточка пользователя (кликабельная)
                     if let user = userService.getCurrentUser() {
                         let visibleName = user.displayName.isEmpty ? user.login : user.displayName
@@ -158,6 +171,17 @@ struct ProfileView: View {
                         }
                     }
 
+                    // Семейный бюджет
+                    VStack(spacing: 8) {
+                        HStack {
+                            Text("Семейный бюджет")
+                                .font(.headline)
+                                .padding(.leading, 20)
+                            Spacer()
+                        }
+                        FamilyBudgetView()
+                    }
+
                     // Кнопка выхода
                     Button(role: .destructive) {
                         UserDefaults.standard.removeObject(forKey: UserDefaultKeys.currentUserId)
@@ -173,20 +197,20 @@ struct ProfileView: View {
                     .buttonStyle(.bordered)
                     .tint(.red)
                     .padding(.horizontal)
-                    .padding(.bottom, 32)
+                    .padding(.bottom, 100)
                 }
                 .padding(.top, 8)
             }
-            .background(AppTheme.Colors.pageBackground)
-            .navigationTitle("Профиль")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showSettings = true } label: {
-                        Image(systemName: "gearshape")
-                    }
-                }
+            .refreshable {
+                let bm = SharedBudgetManager.shared
+                guard bm.isParticipant || bm.shareURL != nil else { return }
+                await CloudKitAutoSyncManager.shared.syncNowAsync()
             }
+            .background(AppTheme.Colors.pageBackground)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
+            .padding(.top, 8)
         }
         .sheet(isPresented: $showAddCategorySheet) {
             AddCategorySheet(type: $type)

@@ -11,15 +11,14 @@ import SwiftData
 struct TransactionsView: View {
     @Environment(\.modelContext) var context
     @Environment(\.locale) private var locale
+    @EnvironmentObject private var autoSync: CloudKitAutoSyncManager
     @State private var date: Date = Date.now
-    @State private var isPresented: Bool = false
     @State private var showDatePicker: Bool = false
     @State private var viewMode: TransactionViewMode = .day
     @State private var filter: TransactionFilter = TransactionFilter()
     @State private var showFilterSheet: Bool = false
     @State private var selectedTransaction: Transaction?
     @State private var showAccountsSheet = false
-    @State private var pendingDeleteId: PersistentIdentifier?
     @State private var pendingDeleteClosure: (() -> Void)?
 
     // Swipe selection
@@ -79,7 +78,7 @@ struct TransactionsView: View {
         case .all:    base = userTransactions
         case .period: base = periodTransactions
         }
-        return base.filter { $0.persistentModelID != pendingDeleteId }.sorted {
+        return base.sorted {
             switch viewMode {
             case .day:
                 let lhs = ($0.priority ?? .normal).sortOrder
@@ -92,17 +91,17 @@ struct TransactionsView: View {
         }
     }
 
-    private var dailyIncomeByCurrency: [(code: String, amount: Decimal)] {
+    private var shownIncomeByCurrency: [(code: String, amount: Decimal)] {
         var dict: [String: Decimal] = [:]
-        for t in dailyTransactions where t.type == .income {
+        for t in shownTransactions where t.type == .income {
             dict[t.toAccount?.currency ?? "RUB", default: .zero] += t.amount
         }
         return dict.map { (code: $0.key, amount: $0.value) }.sorted { $0.amount > $1.amount }
     }
 
-    private var dailyExpenseByCurrency: [(code: String, amount: Decimal)] {
+    private var shownExpenseByCurrency: [(code: String, amount: Decimal)] {
         var dict: [String: Decimal] = [:]
-        for t in dailyTransactions where t.type == .expense {
+        for t in shownTransactions where t.type == .expense {
             dict[t.fromAccount?.currency ?? "RUB", default: .zero] += t.amount
         }
         return dict.map { (code: $0.key, amount: $0.value) }.sorted { $0.amount > $1.amount }
@@ -150,6 +149,14 @@ struct TransactionsView: View {
             ScrollView {
                 VStack(spacing: 16) {
 
+                    HStack {
+                        Text("Кошелёк")
+                            .font(.largeTitle.bold())
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 4)
+
                     if hasNoAccounts {
                         OnboardingCard()
                             .padding(.horizontal)
@@ -165,15 +172,13 @@ struct TransactionsView: View {
                         )
                         .padding(.horizontal)
 
-                        if viewMode == .day {
-                            HStack(alignment: .top, spacing: 12) {
-                                MultiCurrencyPill(label: "Доходы", entries: dailyIncomeByCurrency,
-                                                 color: AppTheme.Colors.income, customCurrencies: userCurrencies)
-                                MultiCurrencyPill(label: "Расходы", entries: dailyExpenseByCurrency,
-                                                 color: AppTheme.Colors.expense, customCurrencies: userCurrencies)
-                            }
-                            .padding(.horizontal)
+                        HStack(alignment: .top, spacing: 12) {
+                            MultiCurrencyPill(label: "Доходы", entries: shownIncomeByCurrency,
+                                             color: AppTheme.Colors.income, customCurrencies: userCurrencies)
+                            MultiCurrencyPill(label: "Расходы", entries: shownExpenseByCurrency,
+                                             color: AppTheme.Colors.expense, customCurrencies: userCurrencies)
                         }
+                        .padding(.horizontal)
 
                         Picker("", selection: $viewMode) {
                             ForEach(TransactionViewMode.allCases, id: \.self) { mode in
@@ -239,7 +244,6 @@ struct TransactionsView: View {
                                         onDelete: {
                                             let service = TransactionService(context: context)
                                             pendingDeleteClosure = { service.deleteTransaction(transaction) }
-                                            pendingDeleteId = transaction.persistentModelID
                                             showDeleteAlert = true
                                         },
                                         onToggleSelect: {
@@ -253,33 +257,20 @@ struct TransactionsView: View {
                         }
                     }
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.top, 8)
                 .padding(.bottom, 100)
             }
-            .background(AppTheme.Colors.pageBackground)
-            .navigationTitle("Кошелёк")
-            .navigationBarTitleDisplayMode(.large)
-            .overlay(alignment: .bottomTrailing) {
-                if !hasNoAccounts && !isSelecting {
-                    Button { isPresented = true } label: {
-                        Image(systemName: "plus")
-                            .font(.title2.bold())
-                            .foregroundStyle(.white)
-                            .frame(width: 58, height: 58)
-                            .background(
-                                LinearGradient(
-                                    colors: [AppTheme.Colors.accent, AppTheme.Colors.accentSecondary],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing
-                                )
-                            )
-                            .clipShape(Circle())
-                            .shadow(color: AppTheme.Colors.accent.opacity(0.4), radius: 10, x: 0, y: 5)
-                    }
-                    .padding(.trailing, 20)
-                    .padding(.bottom, 20)
-                    .transition(.scale.combined(with: .opacity))
-                }
+            .refreshable {
+                let bm = SharedBudgetManager.shared
+                guard bm.isParticipant || bm.shareURL != nil else { return }
+                await autoSync.syncNowAsync()
             }
+            .background(AppTheme.Colors.pageBackground)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
+            .padding(.top, 8)
             .safeAreaInset(edge: .bottom) {
                 if isSelecting {
                     selectionBar
@@ -288,9 +279,7 @@ struct TransactionsView: View {
             }
             .animation(.spring(duration: 0.3), value: isSelecting)
         }
-        .sheet(isPresented: $isPresented) {
-            TransactionsCategoryView(isRootPresented: $isPresented)
-        }
+        .background(AppTheme.Colors.pageBackground.ignoresSafeArea())
         .sheet(item: $selectedTransaction) { transaction in
             TransactionDetailView(transaction: transaction, selectedTransaction: $selectedTransaction)
         }
@@ -308,10 +297,8 @@ struct TransactionsView: View {
             Button("Удалить", role: .destructive) {
                 pendingDeleteClosure?()
                 pendingDeleteClosure = nil
-                pendingDeleteId = nil
             }
             Button("Отмена", role: .cancel) {
-                pendingDeleteId = nil
                 pendingDeleteClosure = nil
             }
         } message: {
@@ -329,6 +316,17 @@ struct TransactionsView: View {
         .onChange(of: viewMode) { _, _ in
             date = Date()
             selectedIds.removeAll()
+        }
+        // Очищаем прямые ссылки на транзакции, которые синк удалил из стора.
+        // Без этого вьюха обращается к .priority zombie-объекта и крашится.
+        .onChange(of: allTransactions) { _, newTransactions in
+            let live = Set(newTransactions.map { $0.persistentModelID })
+            if let sel = selectedTransaction, !live.contains(sel.persistentModelID) {
+                selectedTransaction = nil
+            }
+            if !selectedIds.isEmpty {
+                selectedIds = selectedIds.filter { live.contains($0) }
+            }
         }
     }
 

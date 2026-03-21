@@ -236,6 +236,32 @@ struct AnalyticsView: View {
             ScrollView {
                 VStack(spacing: 16) {
 
+                    HStack {
+                        Text("Аналитика")
+                            .font(.largeTitle.bold())
+                        Spacer()
+                        Menu {
+                            Section("Показывать в аналитике") {
+                                Button {
+                                    includeLoanPayments.toggle()
+                                } label: {
+                                    Label(
+                                        "Платежи по кредитам",
+                                        systemImage: includeLoanPayments ? "checkmark" : ""
+                                    )
+                                }
+                            }
+                        } label: {
+                            Image(systemName: includeLoanPayments
+                                  ? "line.3.horizontal.decrease.circle.fill"
+                                  : "line.3.horizontal.decrease.circle")
+                                .foregroundStyle(includeLoanPayments ? AppTheme.Colors.accent : .secondary)
+                                .font(.title3)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 4)
+
                     // Выбор месяца
                     MonthSelector(selectedMonth: $selectedMonth)
                         .padding(.horizontal)
@@ -247,20 +273,20 @@ struct AnalyticsView: View {
                             .foregroundStyle(.secondary)
                         if monthlyBalanceByCurrency.isEmpty {
                             Text("0 ₽")
-                                .font(.title.bold())
+                                .font(.largeTitle.bold())
                                 .foregroundStyle(.secondary)
                         } else {
                             ForEach(monthlyBalanceByCurrency, id: \.code) { entry in
                                 let color = entry.amount >= 0 ? AppTheme.Colors.income : AppTheme.Colors.expense
                                 HStack(alignment: .firstTextBaseline, spacing: 3) {
                                     Text(entry.amount >= 0 ? "+" : "")
-                                        .font(monthlyBalanceByCurrency.count == 1 ? .title.bold() : .title2.bold())
+                                        .font(monthlyBalanceByCurrency.count == 1 ? .largeTitle.bold() : .title.bold())
                                         .foregroundStyle(color)
                                     Text(entry.amount, format: .number.precision(.fractionLength(0...2)))
-                                        .font(monthlyBalanceByCurrency.count == 1 ? .title.bold() : .title2.bold())
+                                        .font(monthlyBalanceByCurrency.count == 1 ? .largeTitle.bold() : .title.bold())
                                         .foregroundStyle(color)
                                     Text(CurrencyInfo.symbol(for: entry.code, custom: allCurrencies))
-                                        .font(monthlyBalanceByCurrency.count == 1 ? .title3.bold() : .headline.bold())
+                                        .font(monthlyBalanceByCurrency.count == 1 ? .title2.bold() : .title3.bold())
                                         .foregroundStyle(color)
                                 }
                             }
@@ -356,9 +382,9 @@ struct AnalyticsView: View {
                                                 Spacer()
                                                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                                                     Text(group.total, format: .number.precision(.fractionLength(0...2)))
-                                                        .font(.subheadline.bold())
+                                                        .font(.callout.bold())
                                                     Text("₽")
-                                                        .font(.caption.bold())
+                                                        .font(.subheadline.bold())
                                                         .foregroundStyle(.secondary)
                                                 }
                                             }
@@ -445,9 +471,9 @@ struct AnalyticsView: View {
                                                 Spacer()
                                                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                                                     Text(group.total, format: .number.precision(.fractionLength(0...2)))
-                                                        .font(.subheadline.bold())
+                                                        .font(.callout.bold())
                                                     Text("₽")
-                                                        .font(.caption.bold())
+                                                        .font(.subheadline.bold())
                                                         .foregroundStyle(.secondary)
                                                 }
                                             }
@@ -523,32 +549,18 @@ struct AnalyticsView: View {
                     }
                 }
                 .padding(.top, 8)
-                .padding(.bottom, 32)
+                .padding(.bottom, 100)
+            }
+            .refreshable {
+                let bm = SharedBudgetManager.shared
+                guard bm.isParticipant || bm.shareURL != nil else { return }
+                await CloudKitAutoSyncManager.shared.syncNowAsync()
             }
             .background(AppTheme.Colors.pageBackground)
-            .navigationTitle("Аналитика")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Section("Показывать в аналитике") {
-                            Button {
-                                includeLoanPayments.toggle()
-                            } label: {
-                                Label(
-                                    "Платежи по кредитам",
-                                    systemImage: includeLoanPayments ? "checkmark" : ""
-                                )
-                            }
-                        }
-                    } label: {
-                        Image(systemName: includeLoanPayments
-                              ? "line.3.horizontal.decrease.circle.fill"
-                              : "line.3.horizontal.decrease.circle")
-                            .foregroundStyle(includeLoanPayments ? AppTheme.Colors.accent : .secondary)
-                    }
-                }
-            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
+            .padding(.top, 8)
         }
     }
 }

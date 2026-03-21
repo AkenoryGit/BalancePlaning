@@ -160,6 +160,11 @@ struct TransactionCard: View {
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                     }
+                    if let name = transaction.creatorName {
+                        Label(name, systemImage: "person.fill")
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.Colors.accent.opacity(0.8))
+                    }
                 }
 
                 Spacer()
@@ -169,16 +174,16 @@ struct TransactionCard: View {
                     HStack(alignment: .firstTextBaseline, spacing: 1) {
                         if !isLoanPayment, !transaction.type.amountPrefix.isEmpty {
                             Text(transaction.type.amountPrefix)
-                                .font(.subheadline.bold())
+                                .font(.headline.bold())
                         }
                         if isLoanPayment {
                             Text("−")
-                                .font(.subheadline.bold())
+                                .font(.headline.bold())
                         }
                         Text(transaction.amount, format: .number.precision(.fractionLength(0...2)))
-                            .font(.subheadline.bold())
+                            .font(.headline.bold())
                         Text(currencySymbol)
-                            .font(.caption.bold())
+                            .font(.subheadline.bold())
                     }
                     .foregroundStyle(displayColor)
 

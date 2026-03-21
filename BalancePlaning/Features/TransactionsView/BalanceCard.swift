@@ -32,15 +32,15 @@ struct BalanceCard: View {
 
                     if balances.isEmpty {
                         Text("0 ₽")
-                            .font(.system(size: 40, weight: .bold))
+                            .font(.system(size: 52, weight: .bold))
                             .foregroundStyle(.white)
                     } else if balances.count == 1, let entry = balances.first {
                         HStack(alignment: .firstTextBaseline, spacing: 4) {
                             Text(entry.amount, format: .number.precision(.fractionLength(0...2)))
-                                .font(.system(size: 40, weight: .bold))
+                                .font(.system(size: 52, weight: .bold))
                                 .foregroundStyle(.white)
                             Text(CurrencyInfo.symbol(for: entry.code, custom: customCurrencies))
-                                .font(.title2.bold())
+                                .font(.title.bold())
                                 .foregroundStyle(.white.opacity(0.85))
                         }
                     } else {
@@ -48,10 +48,10 @@ struct BalanceCard: View {
                             ForEach(balances, id: \.code) { entry in
                                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                                     Text(entry.amount, format: .number.precision(.fractionLength(0...2)))
-                                        .font(.title3.bold())
+                                        .font(.title2.bold())
                                         .foregroundStyle(.white)
                                     Text(CurrencyInfo.symbol(for: entry.code, custom: customCurrencies))
-                                        .font(.subheadline.bold())
+                                        .font(.headline.bold())
                                         .foregroundStyle(.white.opacity(0.85))
                                 }
                             }

@@ -51,20 +51,20 @@ struct MultiCurrencyPill: View {
             if entries.isEmpty {
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text("0")
-                        .font(.headline.bold())
+                        .font(.title3.bold())
                         .foregroundStyle(color)
                     Text("₽")
-                        .font(.subheadline.bold())
+                        .font(.headline.bold())
                         .foregroundStyle(color.opacity(0.8))
                 }
             } else {
                 ForEach(entries, id: \.code) { entry in
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text(entry.amount, format: .number.precision(.fractionLength(0...2)))
-                            .font(.headline.bold())
+                            .font(.title3.bold())
                             .foregroundStyle(color)
                         Text(CurrencyInfo.symbol(for: entry.code, custom: customCurrencies))
-                            .font(.subheadline.bold())
+                            .font(.headline.bold())
                             .foregroundStyle(color.opacity(0.8))
                     }
                 }

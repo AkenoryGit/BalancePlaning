@@ -41,8 +41,6 @@ struct ProfileDetailSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHandle().padding(.bottom, 20)
-
             // Аватар + логин
             VStack(spacing: 6) {
                 Circle()

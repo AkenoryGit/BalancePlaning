@@ -30,7 +30,7 @@ struct MonthSelector: View {
                 .month(.wide)
                 .year(.defaultDigits)
                 .locale(locale)
-            ))
+            ).capitalized(with: locale))
             .font(.headline)
 
             Spacer()

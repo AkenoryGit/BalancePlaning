@@ -45,65 +45,66 @@ struct AddAccountSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            SheetHandle().padding(.bottom, 24)
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 12) {
+                    Text("Новый счёт")
+                        .font(.title2.bold())
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 4)
 
-            Text("Новый счёт").font(.title3.bold()).padding(.bottom, 24)
+                    inputField(icon: selectedIcon.isEmpty ? "creditcard.fill" : selectedIcon,
+                               placeholder: "Название счёта", text: $name,
+                               hasError: didAttemptSave && !nameIsValid, errorText: "Введите название счёта",
+                               keyboard: .default)
+                        .onChange(of: name) { _, _ in if didAttemptSave { didAttemptSave = false } }
 
-            VStack(spacing: 12) {
-                inputField(icon: selectedIcon.isEmpty ? "creditcard.fill" : selectedIcon,
-                           placeholder: "Название счёта", text: $name,
-                           hasError: didAttemptSave && !nameIsValid, errorText: "Введите название счёта",
-                           keyboard: .default)
-                    .onChange(of: name) { _, _ in if didAttemptSave { didAttemptSave = false } }
+                    inputField(icon: "banknote", placeholder: "Начальный баланс",
+                               text: $balanceString,
+                               hasError: didAttemptSave && !balanceIsValid, errorText: "Введите начальный баланс (можно 0 или отрицательный)",
+                               keyboard: .decimalPad)
+                        .onChange(of: balanceString) { _, _ in if didAttemptSave { didAttemptSave = false } }
 
-                inputField(icon: "banknote", placeholder: "Начальный баланс",
-                           text: $balanceString,
-                           hasError: didAttemptSave && !balanceIsValid, errorText: "Введите начальный баланс (можно 0 или отрицательный)",
-                           keyboard: .decimalPad)
-                    .onChange(of: balanceString) { _, _ in if didAttemptSave { didAttemptSave = false } }
+                    currencyPicker
 
-                currencyPicker
+                    if !groups.isEmpty {
+                        groupPicker
+                    }
 
-                if !groups.isEmpty {
-                    groupPicker
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Иконка")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        IconPickerView(selectedIcon: $selectedIcon,
+                                       icons: IconPalette.accountIcons,
+                                       accentColor: AppTheme.Colors.accent)
+                    }
+
+                    VStack(spacing: 12) {
+                        PrimaryButton(title: "Добавить") {
+                            didAttemptSave = true
+                            guard nameIsValid && balanceIsValid else { return }
+                            AccountService(context: context).addAccount(
+                                accountName: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                                startBalance: balance ?? .zero,
+                                groupId: groupId,
+                                currency: currency,
+                                icon: selectedIcon
+                            )
+                            dismiss()
+                        }
+                        Button("Отменить", role: .cancel) { dismiss() }.foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 8)
                 }
-
-                // Выбор иконки
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Иконка")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    IconPickerView(selectedIcon: $selectedIcon,
-                                   icons: IconPalette.accountIcons,
-                                   accentColor: AppTheme.Colors.accent)
-                }
+                .padding()
             }
-            .padding(.horizontal)
-
-            Spacer()
-
-            VStack(spacing: 12) {
-                PrimaryButton(title: "Добавить") {
-                    didAttemptSave = true
-                    guard nameIsValid && balanceIsValid else { return }
-                    AccountService(context: context).addAccount(
-                        accountName: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                        startBalance: balance ?? .zero,
-                        groupId: groupId,
-                        currency: currency,
-                        icon: selectedIcon
-                    )
-                    dismiss()
-                }
-                Button("Отменить", role: .cancel) { dismiss() }.foregroundStyle(.secondary)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .animation(.easeInOut(duration: 0.2), value: didAttemptSave)
+            .sheet(isPresented: $showAddCurrency) {
+                AddCurrencySheet()
             }
-            .padding(.horizontal).padding(.bottom, 32)
-        }
-        .presentationDetents([.medium, .large])
-        .animation(.easeInOut(duration: 0.2), value: didAttemptSave)
-        .sheet(isPresented: $showAddCurrency) {
-            AddCurrencySheet()
         }
     }
 
@@ -167,9 +168,7 @@ struct AddCurrencySheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHandle().padding(.bottom, 24)
-
-            Text("Новая валюта").font(.title3.bold()).padding(.bottom, 24)
+            Text("Новая валюта").font(.title3.bold()).padding(.top, 20).padding(.bottom, 24)
 
             VStack(spacing: 12) {
                 inputField(icon: "textformat.abc", placeholder: "Код (напр. MEME)", text: $code,
@@ -217,9 +216,7 @@ struct AddGroupSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHandle().padding(.bottom, 24)
-
-            Text("Новая группа").font(.title3.bold()).padding(.bottom, 24)
+            Text("Новая группа").font(.title3.bold()).padding(.top, 20).padding(.bottom, 24)
 
             inputField(icon: "folder.fill", placeholder: "Название группы", text: $name,
                        hasError: nameError, errorText: "Введите название группы", keyboard: .default)
@@ -264,9 +261,7 @@ struct GroupDetailSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHandle().padding(.bottom, 24)
-
-            Text("Группа счетов").font(.title3.bold()).padding(.bottom, 24)
+            Text("Группа счетов").font(.title3.bold()).padding(.top, 20).padding(.bottom, 24)
 
             inputField(icon: "folder.fill", placeholder: "Название группы", text: $name,
                        hasError: nameError, errorText: "Введите название группы", keyboard: .default)

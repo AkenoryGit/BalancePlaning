@@ -19,6 +19,8 @@ struct RegistrationView: View {
     @State private var email: String = ""
     @State private var password: String = ""
     @State private var passwordConfirm: String = ""
+    @State private var selectedQuestion: String = SecurityQuestion.questions[0]
+    @State private var securityAnswer: String = ""
     @State private var errorMessage: String = ""
 
     var body: some View {
@@ -63,6 +65,37 @@ struct RegistrationView: View {
                         placeholder: "Подтвердите пароль",
                         text: $passwordConfirm
                     )
+
+                    // Секретный вопрос
+                    Menu {
+                        ForEach(SecurityQuestion.questions, id: \.self) { q in
+                            Button(q) { selectedQuestion = q }
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "questionmark.circle")
+                                .foregroundStyle(AppTheme.Colors.accent)
+                                .frame(width: 20)
+                            Text(selectedQuestion)
+                                .font(.body)
+                                .foregroundStyle(.primary)
+                                .multilineTextAlignment(.leading)
+                            Spacer()
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .background(Color(.tertiarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+
+                    AuthTextField(
+                        icon: "key",
+                        placeholder: "Ответ на вопрос",
+                        text: $securityAnswer
+                    )
                 }
 
                 AuthErrorLabel(message: errorMessage)
@@ -100,14 +133,19 @@ struct RegistrationView: View {
         guard !password.isEmpty else { withAnimation { errorMessage = "Введите пароль" }; return }
         guard password.count >= 8 else { withAnimation { errorMessage = "Пароль минимум 8 символов" }; return }
         guard password == passwordConfirm else { withAnimation { errorMessage = "Пароли не совпадают" }; return }
+        guard !securityAnswer.trimmingCharacters(in: .whitespaces).isEmpty else {
+            withAnimation { errorMessage = "Введите ответ на секретный вопрос" }; return
+        }
         guard !allUsers.contains(where: { $0.login == email }) else {
             withAnimation { errorMessage = "Такой аккаунт уже существует" }; return
         }
         do {
             let newUser = User(login: email)
+            newUser.securityQuestion = selectedQuestion
             modelContext.insert(newUser)
             try modelContext.save()
             try KeychainManager.save(password: password, id: newUser.id)
+            try KeychainManager.saveSecurityAnswer(securityAnswer, for: newUser.id)
             UserDefaults.standard.set(newUser.id.uuidString, forKey: UserDefaultKeys.currentUserId)
             isLogin = true
         } catch KeychainError.duplicateItem {

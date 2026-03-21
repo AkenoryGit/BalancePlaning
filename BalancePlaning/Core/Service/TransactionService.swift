@@ -9,13 +9,24 @@ import Foundation
 import SwiftData
 
 struct TransactionService {
-    
+
     private let context: ModelContext
-    
+
     init(context: ModelContext) {
         self.context = context
     }
-    
+
+    /// Имя создателя для операции: возвращает login пользователя только в режиме семейного бюджета.
+    private func creatorName() -> String? {
+        let bm = SharedBudgetManager.shared
+        guard bm.activeBudgetOwnerId != nil || bm.shareURL != nil else { return nil }
+        guard let uidStr = UserDefaults.standard.string(forKey: UserDefaultKeys.currentUserId),
+              let uid = UUID(uuidString: uidStr) else { return nil }
+        let users = (try? context.fetch(FetchDescriptor<User>())) ?? []
+        let user = users.first { $0.id == uid }
+        return user?.displayName.isEmpty == false ? user?.displayName : user?.login
+    }
+
     func addTransactions(from: Account, to: Account, amount: Decimal, toAmount: Decimal? = nil,
                          startDate: Date, endDate: Date? = nil,
                          interval: RecurringInterval? = nil, intervalDays: Int? = nil,
@@ -24,6 +35,7 @@ struct TransactionService {
             print("Пользователь не найден")
             return
         }
+        let creator = creatorName()
         var newTransaction: [Transaction] = []
         if interval == nil {
             newTransaction.append(Transaction(
@@ -35,7 +47,8 @@ struct TransactionService {
                 date: startDate,
                 type: .transaction,
                 priority: priority,
-                note: note
+                note: note,
+                creatorName: creator
             ))
         } else {
             guard let endDate = endDate, let interval = interval else {
@@ -57,7 +70,8 @@ struct TransactionService {
                     recurringGroupId: groupId,
                     recurringInterval: interval,
                     recurringIntervalDays: intervalDays,
-                    note: note
+                    note: note,
+                    creatorName: creator
                 ))
             }
         }
@@ -82,6 +96,7 @@ struct TransactionService {
             print("Пользователь не найден")
             return
         }
+        let creator = creatorName()
         var newExpense: [Transaction] = []
         if interval == nil {
             newExpense.append(Transaction(
@@ -92,7 +107,8 @@ struct TransactionService {
                 date: startDate,
                 type: .expense,
                 priority: priority,
-                note: note
+                note: note,
+                creatorName: creator
             ))
         } else {
             guard let endDate = endDate, let interval = interval else {
@@ -113,7 +129,8 @@ struct TransactionService {
                     recurringGroupId: groupId,
                     recurringInterval: interval,
                     recurringIntervalDays: intervalDays,
-                    note: note
+                    note: note,
+                    creatorName: creator
                 ))
             }
         }
@@ -138,6 +155,7 @@ struct TransactionService {
             print("Пользователь не найден")
             return
         }
+        let creator = creatorName()
         var newIncome: [Transaction] = []
         if interval == nil {
             newIncome.append(Transaction(
@@ -148,7 +166,8 @@ struct TransactionService {
                 date: startDate,
                 type: .income,
                 priority: priority,
-                note: note
+                note: note,
+                creatorName: creator
             ))
         } else {
             guard let endDate = endDate, let interval = interval else {
@@ -169,7 +188,8 @@ struct TransactionService {
                     recurringGroupId: groupId,
                     recurringInterval: interval,
                     recurringIntervalDays: intervalDays,
-                    note: note
+                    note: note,
+                    creatorName: creator
                 ))
             }
         }
@@ -210,11 +230,16 @@ struct TransactionService {
                 }
             }
         }
+        let txId = transaction.id
+        let txUserId = transaction.userId
+        let existingTombstones = (try? context.fetch(FetchDescriptor<DeletedRecord>())) ?? []
+        if !existingTombstones.contains(where: { $0.deletedId == txId }) {
+            context.insert(DeletedRecord(deletedId: txId, userId: txUserId))
+        }
         context.delete(transaction)
 
         do {
             try context.save()
-            print("Транзакция \(transaction) была успешно удалена!")
         } catch {
             print("Ошибка удаления транзакции: \(error)")
         }
@@ -229,9 +254,15 @@ struct TransactionService {
         do {
             let all = try context.fetch(descriptor)
             let toDelete = all.filter { $0.recurringGroupId == groupId && $0.date >= date }
-            for t in toDelete { context.delete(t) }
+            let existingTombstones = (try? context.fetch(FetchDescriptor<DeletedRecord>())) ?? []
+            let tombstonedIds = Set(existingTombstones.map { $0.deletedId })
+            for t in toDelete {
+                if !tombstonedIds.contains(t.id) {
+                    context.insert(DeletedRecord(deletedId: t.id, userId: t.userId))
+                }
+                context.delete(t)
+            }
             try context.save()
-            print("Удалено \(toDelete.count) повторяющихся транзакций")
         } catch {
             print("Ошибка удаления серии транзакций: \(error)")
         }
