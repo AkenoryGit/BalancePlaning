@@ -30,7 +30,8 @@ struct LoanService {
 
     func addLoan(name: String, originalAmount: Decimal, interestRate: Decimal,
                  termMonths: Int, startDate: Date, paymentDay: Int, currency: String = "RUB",
-                 firstPaymentDate: Date? = nil, monthlyPaymentOverride: Decimal? = nil) {
+                 firstPaymentDate: Date? = nil, monthlyPaymentOverride: Decimal? = nil,
+                 borrowerName: String? = nil) {
         guard let uid = currentUserId() else { return }
         let payment = monthlyPaymentOverride ?? LoanService.annuityPayment(
             principal: originalAmount, annualRate: interestRate, months: termMonths)
@@ -38,27 +39,37 @@ struct LoanService {
                         interestRate: interestRate, termMonths: termMonths,
                         startDate: startDate, paymentDay: paymentDay,
                         monthlyPayment: payment, currency: currency,
-                        firstPaymentDate: firstPaymentDate)
+                        firstPaymentDate: firstPaymentDate, borrowerName: borrowerName)
         context.insert(loan)
         try? context.save()
     }
 
     func updateLoan(_ loan: Loan, name: String, interestRate: Decimal,
                     termMonths: Int, paymentDay: Int,
-                    firstPaymentDate: Date? = nil, monthlyPaymentOverride: Decimal? = nil) {
+                    firstPaymentDate: Date? = nil, monthlyPaymentOverride: Decimal? = nil,
+                    borrowerName: String? = nil) {
         loan.name = name
         loan.interestRate = interestRate
         loan.termMonths = termMonths
         loan.paymentDay = paymentDay
         loan.firstPaymentDate = firstPaymentDate
+        loan.borrowerName = borrowerName
         loan.monthlyPayment = monthlyPaymentOverride ?? LoanService.annuityPayment(
             principal: loan.originalAmount, annualRate: interestRate, months: termMonths)
         try? context.save()
     }
 
     func deleteLoan(_ loan: Loan, allPayments: [LoanPayment]) {
+        let existing = (try? context.fetch(FetchDescriptor<DeletedRecord>())) ?? []
+        let tombstonedIds = Set(existing.map { $0.deletedId })
         for p in allPayments where p.loanId == loan.id {
+            if !tombstonedIds.contains(p.id) {
+                context.insert(DeletedRecord(deletedId: p.id, userId: p.userId))
+            }
             context.delete(p)
+        }
+        if !tombstonedIds.contains(loan.id) {
+            context.insert(DeletedRecord(deletedId: loan.id, userId: loan.userId))
         }
         context.delete(loan)
         try? context.save()
@@ -132,7 +143,8 @@ struct LoanService {
     func addLoanWithSchedule(name: String, originalAmount: Decimal, interestRate: Decimal,
                               termMonths: Int, startDate: Date, paymentDay: Int, currency: String,
                               firstPaymentDate: Date?, monthlyPaymentOverride: Decimal?,
-                              scheduledEntries: [(date: Date, amount: Decimal)]) {
+                              scheduledEntries: [(date: Date, amount: Decimal)],
+                              borrowerName: String? = nil) {
         guard let uid = currentUserId() else { return }
         let payment = monthlyPaymentOverride ?? LoanService.annuityPayment(
             principal: originalAmount, annualRate: interestRate, months: termMonths)
@@ -140,7 +152,7 @@ struct LoanService {
                         interestRate: interestRate, termMonths: termMonths,
                         startDate: startDate, paymentDay: paymentDay,
                         monthlyPayment: payment, currency: currency,
-                        firstPaymentDate: firstPaymentDate)
+                        firstPaymentDate: firstPaymentDate, borrowerName: borrowerName)
         context.insert(loan)
         for entry in scheduledEntries {
             let lp = LoanPayment(loanId: loan.id, userId: uid, date: entry.date,

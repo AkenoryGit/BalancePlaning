@@ -12,6 +12,7 @@ struct TransactionsView: View {
     @Environment(\.modelContext) var context
     @Environment(\.locale) private var locale
     @EnvironmentObject private var autoSync: CloudKitAutoSyncManager
+    @Environment(TransactionSelectionModel.self) private var selectionModel
     @State private var date: Date = Date.now
     @State private var showDatePicker: Bool = false
     @State private var viewMode: TransactionViewMode = .day
@@ -20,6 +21,7 @@ struct TransactionsView: View {
     @State private var selectedTransaction: Transaction?
     @State private var showAccountsSheet = false
     @State private var pendingDeleteClosure: (() -> Void)?
+    @State private var pendingDeleteTransactionId: PersistentIdentifier? = nil
 
     // Swipe selection
     @State private var selectedIds: Set<PersistentIdentifier> = []
@@ -57,6 +59,11 @@ struct TransactionsView: View {
     private var userAccounts: [Account] {
         guard let uid = currentUserId() else { return [] }
         return allAccounts.filter { $0.userId == uid }
+    }
+
+    private var userLoans: [Loan] {
+        guard let uid = currentUserId() else { return [] }
+        return allLoans.filter { $0.userId == uid }
     }
 
     private var hasNoAccounts: Bool { userAccounts.isEmpty }
@@ -149,10 +156,56 @@ struct TransactionsView: View {
             ScrollView {
                 VStack(spacing: 16) {
 
-                    HStack {
+                    HStack(alignment: .center) {
                         Text("Кошелёк")
                             .font(.largeTitle.bold())
                         Spacer()
+                        if viewMode == .day {
+                            HStack(spacing: 4) {
+                                Button {
+                                    date = Calendar.current.date(byAdding: .day, value: -1, to: date) ?? date
+                                } label: {
+                                    Image(systemName: "chevron.left")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(AppTheme.Colors.accent)
+                                        .frame(width: 28, height: 28)
+                                        .background(AppTheme.Colors.accent.opacity(0.1))
+                                        .clipShape(Circle())
+                                }
+                                Button(action: { showDatePicker = true }) {
+                                    Text(date.formatted(.dateTime
+                                        .day(.defaultDigits)
+                                        .month(.abbreviated)
+                                        .locale(locale)
+                                    ))
+                                    .font(.subheadline.bold())
+                                    .foregroundStyle(AppTheme.Colors.accent)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(AppTheme.Colors.accent.opacity(0.1))
+                                    .clipShape(Capsule())
+                                }
+                                Button {
+                                    date = Calendar.current.date(byAdding: .day, value: +1, to: date) ?? date
+                                } label: {
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(AppTheme.Colors.accent)
+                                        .frame(width: 28, height: 28)
+                                        .background(AppTheme.Colors.accent.opacity(0.1))
+                                        .clipShape(Circle())
+                                }
+                            }
+                        } else {
+                            Text(Date.now.formatted(.dateTime
+                                .day(.defaultDigits)
+                                .month(.abbreviated)
+                                .year(.defaultDigits)
+                                .locale(locale)
+                            ))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        }
                     }
                     .padding(.horizontal)
                     .padding(.top, 4)
@@ -164,20 +217,11 @@ struct TransactionsView: View {
                     } else {
                         BalanceCard(
                             balances: combinedBalances,
-                            date: $date,
-                            showNavigation: viewMode == .day,
+                            incomes: shownIncomeByCurrency,
+                            expenses: shownExpenseByCurrency,
                             customCurrencies: userCurrencies,
-                            onDateTap: { showDatePicker = true },
                             onBalanceTap: { showAccountsSheet = true }
                         )
-                        .padding(.horizontal)
-
-                        HStack(alignment: .top, spacing: 12) {
-                            MultiCurrencyPill(label: "Доходы", entries: shownIncomeByCurrency,
-                                             color: AppTheme.Colors.income, customCurrencies: userCurrencies)
-                            MultiCurrencyPill(label: "Расходы", entries: shownExpenseByCurrency,
-                                             color: AppTheme.Colors.expense, customCurrencies: userCurrencies)
-                        }
                         .padding(.horizontal)
 
                         Picker("", selection: $viewMode) {
@@ -230,8 +274,10 @@ struct TransactionsView: View {
                                         transaction: transaction,
                                         allCategories: userCategories,
                                         allGroups: userGroups,
+                                        allLoans: userLoans,
                                         showDate: viewMode != .day,
                                         isSelected: selectedIds.contains(transaction.persistentModelID),
+                                        isDeletePending: pendingDeleteTransactionId == transaction.persistentModelID,
                                         onTap: {
                                             if isSelecting {
                                                 withAnimation(.spring(duration: 0.2)) {
@@ -244,6 +290,7 @@ struct TransactionsView: View {
                                         onDelete: {
                                             let service = TransactionService(context: context)
                                             pendingDeleteClosure = { service.deleteTransaction(transaction) }
+                                            pendingDeleteTransactionId = transaction.persistentModelID
                                             showDeleteAlert = true
                                         },
                                         onToggleSelect: {
@@ -271,13 +318,6 @@ struct TransactionsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .padding(.top, 8)
-            .safeAreaInset(edge: .bottom) {
-                if isSelecting {
-                    selectionBar
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            }
-            .animation(.spring(duration: 0.3), value: isSelecting)
         }
         .background(AppTheme.Colors.pageBackground.ignoresSafeArea())
         .sheet(item: $selectedTransaction) { transaction in
@@ -300,6 +340,7 @@ struct TransactionsView: View {
             }
             Button("Отмена", role: .cancel) {
                 pendingDeleteClosure = nil
+                pendingDeleteTransactionId = nil
             }
         } message: {
             Text("Операция удалится безвозвратно")
@@ -312,6 +353,19 @@ struct TransactionsView: View {
             Button("Отмена", role: .cancel) {}
         } message: {
             Text(batchDeleteMessage)
+        }
+        .onChange(of: selectedIds) { _, newIds in
+            selectionModel.selectedCount = newIds.count
+            selectionModel.countLabel = selectionCountLabel
+            selectionModel.onCancel = {
+                withAnimation(.spring(duration: 0.3)) { selectedIds.removeAll() }
+            }
+            selectionModel.onBatchDelete = {
+                showBatchDeleteAlert = true
+            }
+        }
+        .onDisappear {
+            selectionModel.selectedCount = 0
         }
         .onChange(of: viewMode) { _, _ in
             date = Date()
@@ -327,43 +381,10 @@ struct TransactionsView: View {
             if !selectedIds.isEmpty {
                 selectedIds = selectedIds.filter { live.contains($0) }
             }
-        }
-    }
-
-    // MARK: - Selection bar
-
-    private var selectionBar: some View {
-        VStack(spacing: 0) {
-            Divider()
-            HStack(spacing: 16) {
-                Button {
-                    withAnimation(.spring(duration: 0.3)) {
-                        selectedIds.removeAll()
-                    }
-                } label: {
-                    Text("Отменить")
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Text(selectionCountLabel)
-                    .font(.subheadline.bold())
-
-                Spacer()
-
-                Button {
-                    showBatchDeleteAlert = true
-                } label: {
-                    Label("Удалить", systemImage: "trash")
-                        .foregroundStyle(.red)
-                        .font(.subheadline.bold())
-                }
+            if let pendingId = pendingDeleteTransactionId, !live.contains(pendingId) {
+                pendingDeleteTransactionId = nil
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
         }
-        .background(Color(.secondarySystemGroupedBackground))
     }
 
     // MARK: - Helpers
@@ -416,3 +437,4 @@ struct TransactionsView: View {
         return "Ещё \(n) фильтр\(suffix)"
     }
 }
+

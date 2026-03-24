@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var showAddSheet: Bool = false
     @State private var showAddLoan: Bool = false
     @State private var showProfileAdd: Bool = false
+    @State private var selectionModel = TransactionSelectionModel()
 
     var userService: UserService {
         UserService(context: context)
@@ -52,14 +53,22 @@ struct ContentView: View {
                 .tag(3)
                 .toolbar(.hidden, for: .tabBar)
         }
+        .environment(selectionModel)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            MainTabBar(selectedTab: $selectedTab) {
-                switch selectedTab {
-                case 2: showAddLoan    = true
-                case 3: showProfileAdd = true
-                default: showAddSheet  = true
+            VStack(spacing: 0) {
+                if selectionModel.isSelecting {
+                    selectionBarView
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                MainTabBar(selectedTab: $selectedTab) {
+                    switch selectedTab {
+                    case 2: showAddLoan    = true
+                    case 3: showProfileAdd = true
+                    default: showAddSheet  = true
+                    }
                 }
             }
+            .animation(.spring(duration: 0.3), value: selectionModel.isSelecting)
         }
         .sheet(isPresented: $showAddSheet) {
             TransactionsCategoryView(isRootPresented: $showAddSheet)
@@ -67,6 +76,40 @@ struct ContentView: View {
         .sheet(isPresented: $showProfileAdd) {
             ProfileAddOptionsSheet()
         }
+    }
+
+    // MARK: - Selection Bar (above tab bar)
+
+    private var selectionBarView: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 16) {
+                Button {
+                    selectionModel.onCancel()
+                } label: {
+                    Text("Отменить")
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Text(selectionModel.countLabel)
+                    .font(.subheadline.bold())
+
+                Spacer()
+
+                Button {
+                    selectionModel.onBatchDelete()
+                } label: {
+                    Label("Удалить", systemImage: "trash")
+                        .foregroundStyle(.red)
+                        .font(.subheadline.bold())
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+        }
+        .background(Color(.secondarySystemGroupedBackground))
     }
 }
 

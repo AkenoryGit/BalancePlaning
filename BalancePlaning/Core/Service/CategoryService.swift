@@ -121,8 +121,16 @@ class CategoryService {
             (t.toCategory.map   { toDeleteIds.contains($0.id) } ?? false)
         }
 
+        let existingTombstones = (try? context.fetch(FetchDescriptor<DeletedRecord>())) ?? []
+        let tombstonedIds = Set(existingTombstones.map { $0.deletedId })
+
         if deleteTransactions {
-            affected.forEach { context.delete($0) }
+            for t in affected {
+                if !tombstonedIds.contains(t.id) {
+                    context.insert(DeletedRecord(deletedId: t.id, userId: t.userId))
+                }
+                context.delete(t)
+            }
         } else {
             let defaultExpense = toDelete.contains(where: { $0.type == .expense })
                 ? getOrCreateDefaultCategory(type: .expense, all: allCategories)
@@ -141,8 +149,13 @@ class CategoryService {
             }
         }
 
-        // Удаляем всё поддерево
-        toDelete.forEach { context.delete($0) }
+        // Удаляем всё поддерево с tombstone'ами
+        for cat in toDelete {
+            if !tombstonedIds.contains(cat.id) {
+                context.insert(DeletedRecord(deletedId: cat.id, userId: cat.userId))
+            }
+            context.delete(cat)
+        }
         save("Категория «\(category.name)» и её поддерево удалены")
     }
 

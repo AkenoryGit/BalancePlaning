@@ -55,12 +55,13 @@ struct AccountsSheetView: View {
                     // MARK: Счета по группам
                     ForEach(userGroups) { group in
                         let groupAccounts = accounts(in: group)
+                        let groupColor = CategoryColors.resolve(group.color) ?? AppTheme.Colors.accent
                         if !groupAccounts.isEmpty {
                             VStack(spacing: 0) {
                                 HStack(spacing: 10) {
                                     Image(systemName: "folder.fill")
                                         .font(.subheadline)
-                                        .foregroundStyle(AppTheme.Colors.accent)
+                                        .foregroundStyle(groupColor)
                                     Text(group.name)
                                         .font(.subheadline.bold())
                                     Spacer()
@@ -77,7 +78,7 @@ struct AccountsSheetView: View {
                                                      onToggle: { toggleAccount(account) })
                                 }
                             }
-                            .cardStyle()
+                            .cardStyle(tint: CategoryColors.resolve(group.color))
                         }
                     }
 

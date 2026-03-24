@@ -34,14 +34,15 @@ struct AddLoanSheet: View {
     init(loan: Loan? = nil) {
         self.loan = loan
         if let l = loan {
-            _name = State(initialValue: l.name)
-            _amountStr  = State(initialValue: NSDecimalNumber(decimal: l.originalAmount).stringValue)
-            _rateStr    = State(initialValue: NSDecimalNumber(decimal: l.interestRate).stringValue)
-            _termStr    = State(initialValue: "\(l.termMonths)")
-            _paymentStr = State(initialValue: NSDecimalNumber(decimal: l.monthlyPayment).stringValue)
-            _startDate  = State(initialValue: l.startDate)
-            _paymentDay = State(initialValue: l.paymentDay)
-            _currency   = State(initialValue: l.currency)
+            _name         = State(initialValue: l.name)
+            _borrowerName = State(initialValue: l.borrowerName ?? "")
+            _amountStr    = State(initialValue: NSDecimalNumber(decimal: l.originalAmount).stringValue)
+            _rateStr      = State(initialValue: NSDecimalNumber(decimal: l.interestRate).stringValue)
+            _termStr      = State(initialValue: "\(l.termMonths)")
+            _paymentStr   = State(initialValue: NSDecimalNumber(decimal: l.monthlyPayment).stringValue)
+            _startDate    = State(initialValue: l.startDate)
+            _paymentDay   = State(initialValue: l.paymentDay)
+            _currency     = State(initialValue: l.currency)
             if let first = l.firstPaymentDate {
                 _useFirstPaymentDate = State(initialValue: true)
                 _firstPaymentDate    = State(initialValue: first)
@@ -50,6 +51,7 @@ struct AddLoanSheet: View {
     }
 
     @State private var name: String = ""
+    @State private var borrowerName: String = ""
     @State private var amountStr: String = ""
     @State private var rateStr: String = ""
     @State private var termStr: String = ""
@@ -111,6 +113,16 @@ struct AddLoanSheet: View {
                                 .foregroundStyle(Color(hex: "E74C3C"))
                                 .frame(width: 20)
                             TextField("Название (напр., Ипотека Сбербанк)", text: $name)
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 14)
+
+                        Divider().padding(.leading, 16)
+
+                        HStack(spacing: 12) {
+                            Image(systemName: "person")
+                                .foregroundStyle(Color(hex: "E74C3C"))
+                                .frame(width: 20)
+                            TextField("На кого взят кредит (необязательно)", text: $borrowerName)
                         }
                         .padding(.horizontal, 16).padding(.vertical, 14)
                     }
@@ -355,12 +367,14 @@ struct AddLoanSheet: View {
             guard let amt = e.amount, amt > 0 else { return nil }
             return (date: e.date, amount: amt)
         }
+        let trimmedBorrower = borrowerName.trimmingCharacters(in: .whitespaces)
         LoanService(context: context).addLoanWithSchedule(
             name: trimmedName, originalAmount: a, interestRate: r,
             termMonths: t, startDate: startDate, paymentDay: paymentDay,
             currency: currency, firstPaymentDate: firstDate,
             monthlyPaymentOverride: paymentOverride,
-            scheduledEntries: entries
+            scheduledEntries: entries,
+            borrowerName: trimmedBorrower.isEmpty ? nil : trimmedBorrower
         )
     }
 
@@ -374,10 +388,12 @@ struct AddLoanSheet: View {
               let r = rate, let t = termMonths else { return }
         let firstDate: Date? = useFirstPaymentDate ? firstPaymentDate : nil
         let paymentOverride: Decimal? = paymentStr.isEmpty ? nil : effectivePayment
+        let trimmedBorrower = borrowerName.trimmingCharacters(in: .whitespaces)
         LoanService(context: context).updateLoan(loan, name: trimmedName, interestRate: r,
                                                   termMonths: t, paymentDay: paymentDay,
                                                   firstPaymentDate: firstDate,
-                                                  monthlyPaymentOverride: paymentOverride)
+                                                  monthlyPaymentOverride: paymentOverride,
+                                                  borrowerName: trimmedBorrower.isEmpty ? nil : trimmedBorrower)
         dismiss()
     }
 }

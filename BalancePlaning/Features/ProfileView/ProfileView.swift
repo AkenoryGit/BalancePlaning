@@ -12,11 +12,16 @@ struct ProfileView: View {
     @ObservedObject private var settings = AppSettings.shared
 
     @Query private var allCurrencies: [Currency]
+    @Query private var allAccounts: [Account]
+    @Query private var allLoans: [Loan]
     @State private var showAddCategorySheet: Bool = false
     @State private var showAddCurrencySheet: Bool = false
     @State private var showProfileDetail: Bool = false
     @State private var showSettings: Bool = false
     @State private var type: CategoryType = .expense
+    @State private var currencyToDelete: Currency? = nil
+    @State private var showCurrencyInUseAlert = false
+    @State private var showCurrencyDeleteAlert = false
 
     var userService: UserService { UserService(context: context) }
 
@@ -157,7 +162,12 @@ struct ProfileView: View {
                                         }
                                         Spacer()
                                         Button(role: .destructive) {
-                                            CurrencyService(context: context).deleteCurrency(currency)
+                                            currencyToDelete = currency
+                                            if isCurrencyInUse(currency) {
+                                                showCurrencyInUseAlert = true
+                                            } else {
+                                                showCurrencyDeleteAlert = true
+                                            }
                                         } label: {
                                             Image(systemName: "trash").foregroundStyle(.red)
                                         }
@@ -226,6 +236,31 @@ struct ProfileView: View {
         .sheet(isPresented: $showSettings) {
             AppSettingsSheet()
         }
+        .alert("Валюта используется", isPresented: $showCurrencyInUseAlert) {
+            Button("Понятно", role: .cancel) { currencyToDelete = nil }
+        } message: {
+            if let c = currencyToDelete {
+                Text("Валюта \(c.name) (\(c.code)) используется в счетах или кредитах. Удалите или переведите их на другую валюту, прежде чем удалить эту валюту.")
+            }
+        }
+        .alert("Удалить валюту?", isPresented: $showCurrencyDeleteAlert) {
+            Button("Удалить", role: .destructive) {
+                if let c = currencyToDelete { CurrencyService(context: context).deleteCurrency(c) }
+                currencyToDelete = nil
+            }
+            Button("Отмена", role: .cancel) { currencyToDelete = nil }
+        } message: {
+            if let c = currencyToDelete {
+                Text("Валюта \(c.name) (\(c.code)) будет удалена безвозвратно.")
+            }
+        }
+    }
+
+    private func isCurrencyInUse(_ currency: Currency) -> Bool {
+        let code = currency.code
+        let accountUsed = allAccounts.contains { $0.currency == code }
+        let loanUsed = allLoans.contains { $0.currency == code }
+        return accountUsed || loanUsed
     }
 }
 

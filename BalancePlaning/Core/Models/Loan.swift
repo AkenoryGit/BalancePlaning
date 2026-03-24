@@ -22,10 +22,12 @@ class Loan {
     var currency: String = "RUB"
     /// nil = первый платёж через месяц после startDate (стандарт)
     var firstPaymentDate: Date? = nil
+    /// Имя заёмщика (для семейного бюджета)
+    var borrowerName: String? = nil
 
     init(userId: UUID, name: String, originalAmount: Decimal, interestRate: Decimal,
          termMonths: Int, startDate: Date, paymentDay: Int, monthlyPayment: Decimal,
-         currency: String = "RUB", firstPaymentDate: Date? = nil) {
+         currency: String = "RUB", firstPaymentDate: Date? = nil, borrowerName: String? = nil) {
         self.userId = userId
         self.name = name
         self.originalAmount = originalAmount
@@ -36,5 +38,6 @@ class Loan {
         self.monthlyPayment = monthlyPayment
         self.currency = currency
         self.firstPaymentDate = firstPaymentDate
+        self.borrowerName = borrowerName
     }
 }

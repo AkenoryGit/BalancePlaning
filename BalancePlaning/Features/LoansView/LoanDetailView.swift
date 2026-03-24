@@ -174,6 +174,10 @@ struct LoanDetailView: View {
             dayLabel = "\(loan.paymentDay)-е число"
         }
         return VStack(spacing: 0) {
+            if let borrower = loan.borrowerName, !borrower.isEmpty {
+                infoRow(label: "На кого взят", value: borrower)
+                Divider().padding(.leading, 16)
+            }
             infoRow(label: "Сумма кредита", value: "\(loan.originalAmount.formatted(.number.precision(.fractionLength(0...0)))) \(CurrencyInfo.symbol(for: loan.currency))")
             Divider().padding(.leading, 16)
             infoRow(label: "Процентная ставка", value: "\(LoanService.toDouble(loan.interestRate).formatted(.number.precision(.fractionLength(0...2))))% \(paLabel)")

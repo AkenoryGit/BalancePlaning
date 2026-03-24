@@ -14,11 +14,18 @@ struct TransactionDetailView: View {
     let transaction: Transaction
     @Binding var selectedTransaction: Transaction?
 
+    @Query private var allLoans: [Loan]
+
     @State private var showEdit: Bool = false
     @State private var showDeleteAlert: Bool = false
     @State private var showConfirmDeleteAlert: Bool = false
     @State private var editWasSaved: Bool = false
     @State private var pendingAction: (() -> Void)?
+
+    private var loanBorrowerName: String? {
+        guard let lid = transaction.loanId else { return nil }
+        return allLoans.first { $0.id == lid }?.borrowerName
+    }
 
     private var detailCurrencySymbol: String {
         switch transaction.type {
@@ -122,6 +129,9 @@ struct TransactionDetailView: View {
                 if transaction.loanId != nil || transaction.type == .correction {
                     if !transaction.comment.isEmpty {
                         DetailRow(label: "Комментарий", value: transaction.comment)
+                    }
+                    if let borrower = loanBorrowerName {
+                        DetailRow(label: "На кого взят", value: borrower)
                     }
                 } else if !transaction.note.isEmpty {
                     DetailRow(label: "Заметка", value: transaction.note)

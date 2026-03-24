@@ -128,15 +128,19 @@ struct AccountGroupSection: View {
     let onAccountTap: (Account) -> Void
     let accountBalance: (Account) -> Decimal
 
+    private var groupColor: Color {
+        CategoryColors.resolve(group.color) ?? AppTheme.Colors.accent
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Заголовок группы — тапается для сворачивания
             Button(action: onToggle) {
                 HStack(spacing: 12) {
                     Image(systemName: "folder.fill")
-                        .font(.subheadline).foregroundStyle(AppTheme.Colors.accent)
+                        .font(.subheadline).foregroundStyle(groupColor)
                         .frame(width: 34, height: 34)
-                        .background(AppTheme.Colors.accent.opacity(0.1)).clipShape(Circle())
+                        .background(groupColor.opacity(0.1)).clipShape(Circle())
 
                     Text(group.name).font(.subheadline.bold()).foregroundStyle(.primary)
                     Spacer()
@@ -145,9 +149,9 @@ struct AccountGroupSection: View {
                         ForEach(totals, id: \.code) { entry in
                             HStack(alignment: .firstTextBaseline, spacing: 2) {
                                 Text(entry.amount, format: .number.precision(.fractionLength(0...2)))
-                                    .font(.headline.bold()).foregroundStyle(AppTheme.Colors.accent)
+                                    .font(.headline.bold()).foregroundStyle(groupColor)
                                 Text(CurrencyInfo.symbol(for: entry.code, custom: customCurrencies))
-                                    .font(.subheadline.bold()).foregroundStyle(AppTheme.Colors.accent.opacity(0.8))
+                                    .font(.subheadline.bold()).foregroundStyle(groupColor.opacity(0.8))
                             }
                         }
                     }
@@ -173,7 +177,7 @@ struct AccountGroupSection: View {
                     Button { onAccountTap(account) } label: {
                         HStack(spacing: 12) {
                             Image(systemName: account.icon.isEmpty ? "creditcard" : account.icon)
-                                .font(.subheadline).foregroundStyle(AppTheme.Colors.accent)
+                                .font(.subheadline).foregroundStyle(groupColor)
                                 .frame(width: 34, height: 34)
 
                             Text(account.name).font(.subheadline).foregroundStyle(.primary)
@@ -194,7 +198,7 @@ struct AccountGroupSection: View {
                 }
             }
         }
-        .cardStyle()
+        .cardStyle(tint: CategoryColors.resolve(group.color))
         .animation(.easeInOut(duration: 0.2), value: isExpanded)
     }
 }

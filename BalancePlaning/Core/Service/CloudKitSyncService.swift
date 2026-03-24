@@ -150,11 +150,13 @@ struct CloudKitSyncService {
         let status = try await ckContainer.accountStatus()
         guard status == .available else { throw CloudKitError.notSignedIn }
         let zoneID = CloudKitConfig.ownerZoneID
-        // Pull сначала: получаем новые записи участника.
-        // seedLocalData защищена локальными tombstone'ами — не воскрешает то, что удалил владелец.
-        try await seedLocalData(from: zoneID, in: privateDB)
-        // Push: отправляем объединённые данные (включая только что полученные от участника)
+        // Push сначала: локальные изменения (в т.ч. новые поля) сохраняются в CloudKit
+        // до того как pull может их перезаписать старыми данными из зоны.
+        // Orphan-cleanup не используется — удаления распространяются через tombstone'ы,
+        // что позволяет участникам добавлять записи без риска их удаления при push владельца.
         try await pushAllLocalData(to: zoneID, db: privateDB)
+        // Pull: подтягиваем изменения участника (включая только что запушенные данные владельца)
+        try await seedLocalData(from: zoneID, in: privateDB)
     }
 
     /// Быстрый push без pull — для авто-синхронизации при открытии приложения.
@@ -236,15 +238,12 @@ struct CloudKitSyncService {
     }
 
     /// Push для участника: использует userId ВЛАДЕЛЬЦА → shared database.
-    /// Участник НЕ удаляет orphan-записи из CloudKit — это делает только владелец.
-    /// Иначе новые записи владельца, которые участник ещё не вытянул, удаляются из CloudKit.
     private func pushParticipantData(to zoneID: CKRecordZone.ID) async throws {
         guard let ownerId = SharedBudgetManager.shared.activeBudgetOwnerId else { return }
-        try await pushRecordsForUserId(ownerId, to: zoneID, db: sharedDB, deletesOrphans: false)
+        try await pushRecordsForUserId(ownerId, to: zoneID, db: sharedDB)
     }
 
-    private func pushRecordsForUserId(_ userId: UUID, to zoneID: CKRecordZone.ID, db: CKDatabase,
-                                      deletesOrphans: Bool = true) async throws {
+    private func pushRecordsForUserId(_ userId: UUID, to zoneID: CKRecordZone.ID, db: CKDatabase) async throws {
         var records: [CKRecord] = []
 
         if let arr = try? context.fetch(FetchDescriptor<Account>()) {
@@ -297,22 +296,6 @@ struct CloudKitSyncService {
         records = records.filter { seenNames.insert($0.recordID.recordName).inserted }
 
         if !records.isEmpty { try await batchSave(records, to: db) }
-
-        // Orphan-deletion: только владелец удаляет из CloudKit записи, которых нет локально.
-        // Участник пропускает этот шаг — иначе он удаляет новые записи владельца,
-        // которые ещё не вытянул к себе на устройство.
-        if deletesOrphans {
-            let managedTypes: Set<String> = [
-                CloudKitConfig.RecordType.account, CloudKitConfig.RecordType.accountGroup,
-                CloudKitConfig.RecordType.category, CloudKitConfig.RecordType.transaction,
-                CloudKitConfig.RecordType.loan, CloudKitConfig.RecordType.loanPayment,
-                CloudKitConfig.RecordType.currency
-            ]
-            let cloudIDs = Set(cloudRecords.filter { managedTypes.contains($0.recordType) }.map { $0.recordID })
-            let localIDs = Set(records.map { $0.recordID })
-            let toDelete = Array(cloudIDs.subtracting(localIDs))
-            if !toDelete.isEmpty { try await batchDelete(toDelete, from: db) }
-        }
     }
 
     @discardableResult
@@ -418,13 +401,16 @@ struct CloudKitSyncService {
             }
         }
 
-        // Удаляем объекты, которых больше нет в CloudKit
-        for (id, obj) in localAccounts   where !seenAccounts.contains(id)   { context.delete(obj) }
-        for (id, obj) in localGroups     where !seenGroups.contains(id)     { context.delete(obj) }
-        for (id, obj) in localCategories where !seenCategories.contains(id) { context.delete(obj) }
-        for (id, obj) in localLoans      where !seenLoans.contains(id)      { context.delete(obj) }
-        for (id, obj) in localPayments   where !seenPayments.contains(id)   { context.delete(obj) }
-        for (id, obj) in localCurrencies where !seenCurrencies.contains(id) { context.delete(obj) }
+        // Удаляем только tombstoned объекты, которых нет в CloudKit.
+        // Tombstone-only подход (как для транзакций выше): защищает только что созданные локальные
+        // объекты от удаления — они ещё не попали в CloudKit, но tombstone'а на них нет.
+        // Удаление без tombstone (orphan-cleanup) удаляло бы эти объекты сразу после создания.
+        for (id, obj) in localAccounts   where tombstonedIds.contains(id) && !seenAccounts.contains(id)   { context.delete(obj) }
+        for (id, obj) in localGroups     where tombstonedIds.contains(id) && !seenGroups.contains(id)     { context.delete(obj) }
+        for (id, obj) in localCategories where tombstonedIds.contains(id) && !seenCategories.contains(id) { context.delete(obj) }
+        for (id, obj) in localLoans      where tombstonedIds.contains(id) && !seenLoans.contains(id)      { context.delete(obj) }
+        for (id, obj) in localPayments   where tombstonedIds.contains(id) && !seenPayments.contains(id)   { context.delete(obj) }
+        for (id, obj) in localCurrencies where tombstonedIds.contains(id) && !seenCurrencies.contains(id) { context.delete(obj) }
         // Tombstone'ы накапливаются — намеренно не удаляем локальные tombstone'ы, которых нет в CloudKit
 
         // Проход 2: транзакции (upsert) — нужны актуальные Account/Category после прохода 1

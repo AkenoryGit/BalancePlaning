@@ -328,7 +328,7 @@ struct CategoryDetailSheet: View {
                 .padding(.bottom, 32)
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
         .confirmationDialog(deleteDialogTitle, isPresented: $showDeleteDialog, titleVisibility: .visible) {
             Button("Удалить всё, включая операции (\(affectedTransactionsCount))", role: .destructive) {
                 service.deleteCategory(

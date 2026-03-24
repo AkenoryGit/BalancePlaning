@@ -212,16 +212,21 @@ struct AddGroupSheet: View {
     @Environment(\.modelContext) private var context
 
     @State private var name = ""
+    @State private var selectedColor = ""
     @State private var nameError = false
 
     var body: some View {
         VStack(spacing: 0) {
             Text("Новая группа").font(.title3.bold()).padding(.top, 20).padding(.bottom, 24)
 
-            inputField(icon: "folder.fill", placeholder: "Название группы", text: $name,
-                       hasError: nameError, errorText: "Введите название группы", keyboard: .default)
-                .onChange(of: name) { _, _ in nameError = false }
-                .padding(.horizontal)
+            VStack(spacing: 16) {
+                inputField(icon: "folder.fill", placeholder: "Название группы", text: $name,
+                           hasError: nameError, errorText: "Введите название группы", keyboard: .default)
+                    .onChange(of: name) { _, _ in nameError = false }
+
+                GroupColorPicker(selectedColor: $selectedColor)
+            }
+            .padding(.horizontal)
 
             Spacer()
 
@@ -229,14 +234,14 @@ struct AddGroupSheet: View {
                 PrimaryButton(title: "Создать") {
                     let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !trimmed.isEmpty else { nameError = true; return }
-                    AccountGroupService(context: context).addGroup(name: trimmed)
+                    AccountGroupService(context: context).addGroup(name: trimmed, color: selectedColor)
                     dismiss()
                 }
                 Button("Отменить", role: .cancel) { dismiss() }.foregroundStyle(.secondary)
             }
             .padding(.horizontal).padding(.bottom, 32)
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
         .animation(.easeInOut(duration: 0.2), value: nameError)
     }
 }
@@ -249,6 +254,7 @@ struct GroupDetailSheet: View {
     @Binding var selectedGroup: AccountGroup?
 
     @State private var name: String
+    @State private var selectedColor: String
     @State private var nameError = false
     @State private var showDeleteAlert = false
     @State private var pendingAction: (() -> Void)?
@@ -257,16 +263,21 @@ struct GroupDetailSheet: View {
         self.group = group
         self._selectedGroup = selectedGroup
         self._name = State(initialValue: group.name)
+        self._selectedColor = State(initialValue: group.color)
     }
 
     var body: some View {
         VStack(spacing: 0) {
             Text("Группа счетов").font(.title3.bold()).padding(.top, 20).padding(.bottom, 24)
 
-            inputField(icon: "folder.fill", placeholder: "Название группы", text: $name,
-                       hasError: nameError, errorText: "Введите название группы", keyboard: .default)
-                .onChange(of: name) { _, _ in nameError = false }
-                .padding(.horizontal)
+            VStack(spacing: 16) {
+                inputField(icon: "folder.fill", placeholder: "Название группы", text: $name,
+                           hasError: nameError, errorText: "Введите название группы", keyboard: .default)
+                    .onChange(of: name) { _, _ in nameError = false }
+
+                GroupColorPicker(selectedColor: $selectedColor)
+            }
+            .padding(.horizontal)
 
             Spacer()
 
@@ -274,7 +285,7 @@ struct GroupDetailSheet: View {
                 PrimaryButton(title: "Сохранить") {
                     let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !trimmed.isEmpty else { nameError = true; return }
-                    AccountGroupService(context: context).updateGroup(group, name: trimmed)
+                    AccountGroupService(context: context).updateGroup(group, name: trimmed, color: selectedColor)
                     selectedGroup = nil
                 }
                 Button(role: .destructive) { showDeleteAlert = true } label: {
@@ -296,6 +307,55 @@ struct GroupDetailSheet: View {
         .onDisappear { pendingAction?(); pendingAction = nil }
         .presentationDetents([.medium, .large])
         .animation(.easeInOut(duration: 0.2), value: nameError)
+    }
+}
+
+// MARK: - Выбор цвета группы
+
+struct GroupColorPicker: View {
+    @Binding var selectedColor: String
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 6)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Цвет группы")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(columns: columns, spacing: 10) {
+                // Без цвета
+                Circle()
+                    .strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1.5)
+                    .frame(height: 36)
+                    .overlay {
+                        if selectedColor.isEmpty {
+                            Image(systemName: "checkmark")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Image(systemName: "xmark")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .onTapGesture { selectedColor = "" }
+
+                ForEach(CategoryColors.palette) { swatch in
+                    Circle()
+                        .fill(swatch.color)
+                        .frame(height: 36)
+                        .overlay {
+                            if selectedColor == swatch.hex {
+                                Image(systemName: "checkmark")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .onTapGesture { selectedColor = swatch.hex }
+                }
+            }
+        }
     }
 }
 

@@ -12,8 +12,11 @@ struct TransactionCard: View {
     let transaction: Transaction
     var allCategories: [Category] = []
     var allGroups: [AccountGroup] = []
+    var allLoans: [Loan] = []
     var showDate: Bool = false
+    var trailingRadius: CGFloat = AppTheme.cardRadius
     @Environment(\.locale) private var locale
+    @ObservedObject private var budgetManager = SharedBudgetManager.shared
 
     // Родительская категория для expense/income (nil если корневая)
     private var parentCategoryName: String? {
@@ -27,13 +30,13 @@ struct TransactionCard: View {
         return allCategories.first { $0.id == parentId }?.name
     }
 
-    // Имя группы счёта-источника (для expense/transfer) или счёта назначения (income)
+    // Имя группы для счёта
     private func groupName(for account: Account?) -> String? {
         guard let gid = account?.groupId else { return nil }
         return allGroups.first { $0.id == gid }?.name
     }
 
-    // Символ валюты счёта-источника (для отображения суммы списания)
+    // Символ валюты
     private var currencySymbol: String {
         switch transaction.type {
         case .income:      return CurrencyInfo.symbol(for: transaction.toAccount?.currency ?? "RUB")
@@ -44,6 +47,25 @@ struct TransactionCard: View {
     }
 
     private var isLoanPayment: Bool { transaction.loanId != nil }
+
+    private var loanBorrowerName: String? {
+        guard let lid = transaction.loanId else { return nil }
+        return allLoans.first { $0.id == lid }?.borrowerName
+    }
+
+    // Показывать двухколоночный макет (категория + счёт)
+    private var showTwoColumns: Bool {
+        !isLoanPayment && (transaction.type == .income || transaction.type == .expense)
+    }
+
+    // Счёт, релевантный для отображения
+    private var relevantAccount: Account? {
+        switch transaction.type {
+        case .expense: return transaction.fromAccount
+        case .income:  return transaction.toAccount
+        default:       return nil
+        }
+    }
 
     private var title: String {
         let bundle = AppSettings.shared.bundle
@@ -70,14 +92,6 @@ struct TransactionCard: View {
         }
     }
 
-    private var displayIcon: String {
-        isLoanPayment ? "creditcard.fill" : transaction.type.icon
-    }
-
-    private var displayColor: Color {
-        isLoanPayment ? Color(hex: "E74C3C") : transaction.type.color
-    }
-
     private var subtitle: String {
         switch transaction.type {
         case .income:
@@ -102,6 +116,14 @@ struct TransactionCard: View {
         return account.name
     }
 
+    private var displayIcon: String {
+        isLoanPayment ? "creditcard.fill" : transaction.type.icon
+    }
+
+    private var displayColor: Color {
+        isLoanPayment ? Color(hex: "E74C3C") : transaction.type.color
+    }
+
     // Цвет корневой категории транзакции (для подсветки карточки)
     private var categoryTintColor: Color? {
         let cat: Category?
@@ -111,7 +133,6 @@ struct TransactionCard: View {
         default:       return nil
         }
         guard let cat else { return nil }
-        // Если это подкатегория — берём цвет родителя
         let rootId = cat.parentId ?? cat.id
         return allCategories.first { $0.id == rootId }.flatMap { CategoryColors.resolve($0.color) }
     }
@@ -128,7 +149,7 @@ struct TransactionCard: View {
                     )
                 )
 
-            HStack(spacing: 14) {
+            HStack(spacing: 12) {
                 // Иконка типа
                 Image(systemName: displayIcon)
                     .font(.title3)
@@ -137,16 +158,60 @@ struct TransactionCard: View {
                     .background(displayColor.opacity(0.12))
                     .clipShape(Circle())
 
-                // Название и счёт
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.subheadline.bold())
-                        .foregroundStyle(.primary)
-                    if !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                // Основной контент
+                VStack(alignment: .leading, spacing: 3) {
+                    if showTwoColumns {
+                        // Два столбца: категория | счёт
+                        HStack(alignment: .top, spacing: 10) {
+                            // Столбец категории
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(title)
+                                    .font(.subheadline.bold())
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                if let parent = parentCategoryName {
+                                    Text(parent)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+
+                            // Разделитель
+                            Rectangle()
+                                .fill(Color.secondary.opacity(0.25))
+                                .frame(width: 1)
+                                .frame(minHeight: 16)
+
+                            // Столбец счёта
+                            if let account = relevantAccount {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(account.name)
+                                        .font(.subheadline.bold())
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                    if let g = groupName(for: account) {
+                                        Text(g)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Перевод / Корректировка / Платёж по кредиту
+                        Text(title)
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.primary)
+                        if !subtitle.isEmpty {
+                            Text(subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
+
+                    // Заметка
                     if isLoanPayment {
                         if !transaction.comment.isEmpty {
                             Text(transaction.comment)
@@ -160,30 +225,40 @@ struct TransactionCard: View {
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                     }
-                    if let name = transaction.creatorName {
+
+                    // Заёмщик кредита (семейный бюджет)
+                    if let borrower = loanBorrowerName {
+                        Label(borrower, systemImage: "person.fill")
+                            .font(.caption2)
+                            .foregroundStyle(Color(hex: "E74C3C").opacity(0.8))
+                    }
+
+                    // Создатель (только в режиме семейного бюджета)
+                    if let name = transaction.creatorName,
+                       budgetManager.activeBudgetOwnerId != nil || budgetManager.shareURL != nil {
                         Label(name, systemImage: "person.fill")
                             .font(.caption2)
                             .foregroundStyle(AppTheme.Colors.accent.opacity(0.8))
                     }
                 }
 
-                Spacer()
+                Spacer(minLength: 8)
 
-                // Сумма и время
+                // Сумма и дата
                 VStack(alignment: .trailing, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 1) {
                         if !isLoanPayment, !transaction.type.amountPrefix.isEmpty {
                             Text(transaction.type.amountPrefix)
-                                .font(.headline.bold())
+                                .font(.title3.bold())
                         }
                         if isLoanPayment {
                             Text("−")
-                                .font(.headline.bold())
+                                .font(.title3.bold())
                         }
                         Text(transaction.amount, format: .number.precision(.fractionLength(0...2)))
-                            .font(.headline.bold())
+                            .font(.title3.bold())
                         Text(currencySymbol)
-                            .font(.subheadline.bold())
+                            .font(.callout.bold())
                     }
                     .foregroundStyle(displayColor)
 
@@ -201,6 +276,6 @@ struct TransactionCard: View {
             }
             .padding(14)
         }
-        .cardStyle(tint: categoryTintColor)
+        .cardStyle(tint: categoryTintColor, trailingRadius: trailingRadius)
     }
 }

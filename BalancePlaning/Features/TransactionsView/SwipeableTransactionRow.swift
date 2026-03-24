@@ -12,8 +12,11 @@ struct SwipeableTransactionRow: View {
     let transaction: Transaction
     let allCategories: [Category]
     let allGroups: [AccountGroup]
+    let allLoans: [Loan]
     let showDate: Bool
     let isSelected: Bool
+    /// true пока висит алерт подтверждения удаления — строка удерживает offset
+    var isDeletePending: Bool = false
 
     var onTap: () -> Void
     var onDelete: () -> Void
@@ -26,17 +29,24 @@ struct SwipeableTransactionRow: View {
     private let fullSwipeThreshold: CGFloat = 150
     private let selectThreshold: CGFloat = 40
 
+    /// Плавно уменьшает скругление правых углов карточки по мере открытия зоны удаления
+    private var trailingRadius: CGFloat {
+        max(0, min(AppTheme.cardRadius, AppTheme.cardRadius + offset * (AppTheme.cardRadius / actionWidth)))
+    }
+
     var body: some View {
         ZStack(alignment: .trailing) {
             // Красная зона удаления (за карточкой, справа)
             deleteZone
 
-            // Карточка транзакции
+            // Карточка транзакции — правые углы плавно срезаются при появлении зоны удаления
             TransactionCard(
                 transaction: transaction,
                 allCategories: allCategories,
                 allGroups: allGroups,
-                showDate: showDate
+                allLoans: allLoans,
+                showDate: showDate,
+                trailingRadius: trailingRadius
             )
             .overlay(alignment: .topLeading) {
                 if isSelected {
@@ -61,6 +71,12 @@ struct SwipeableTransactionRow: View {
         }
         .padding(.horizontal)
         .simultaneousGesture(dragGesture)
+        // Когда алерт снят (отмена) — возвращаем карточку на место
+        .onChange(of: isDeletePending) { _, newValue in
+            if !newValue {
+                withAnimation(.spring(duration: 0.3)) { offset = 0 }
+            }
+        }
     }
 
     // MARK: - Delete zone
@@ -130,8 +146,8 @@ struct SwipeableTransactionRow: View {
                 let vx = value.velocity.width
 
                 if dx < -fullSwipeThreshold || vx < -900 {
-                    // Полный свайп: удаление
-                    withAnimation(.spring(duration: 0.25)) { offset = 0 }
+                    // Полный свайп: фиксируем зону удаления и вызываем onDelete
+                    withAnimation(.spring(duration: 0.3)) { offset = -actionWidth }
                     onDelete()
                 } else if dx < -(actionWidth * 0.45) {
                     // Частичный: показываем кнопку

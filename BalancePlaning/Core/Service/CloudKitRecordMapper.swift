@@ -13,12 +13,11 @@ import CloudKit
 extension Account {
 
     func update(from r: CKRecord) {
-        name                = r["name"]     as? String ?? name
-        if let s = r["balance"] as? String  { balance = Decimal(string: s) ?? balance }
-        currency            = r["currency"] as? String ?? currency
-        icon                = r["icon"]     as? String ?? icon
-        isIncludedInBalance = (r["isIncludedInBalance"] as? NSNumber)?.boolValue ?? isIncludedInBalance
-        if let g = r["groupId"] as? String  { groupId = g.isEmpty ? nil : UUID(uuidString: g) }
+        name     = r["name"]     as? String ?? name
+        if let s = r["balance"] as? String { balance = Decimal(string: s) ?? balance }
+        currency = r["currency"] as? String ?? currency
+        icon     = r["icon"]     as? String ?? icon
+        if let g = r["groupId"] as? String { groupId = g.isEmpty ? nil : UUID(uuidString: g) }
     }
 
     func toCKRecord(zoneID: CKRecordZone.ID) -> CKRecord {
@@ -58,7 +57,8 @@ extension Account {
 extension AccountGroup {
 
     func update(from r: CKRecord) {
-        name = r["name"] as? String ?? name
+        name  = r["name"]  as? String ?? name
+        color = r["color"] as? String ?? color
     }
 
     func toCKRecord(zoneID: CKRecordZone.ID) -> CKRecord {
@@ -69,6 +69,7 @@ extension AccountGroup {
         r["id"]     = id.uuidString
         r["userId"] = userId.uuidString
         r["name"]   = name
+        r["color"]  = color
         return r
     }
 
@@ -78,7 +79,7 @@ extension AccountGroup {
               let uidStr = r["userId"] as? String, let userId = UUID(uuidString: uidStr),
               let name   = r["name"]   as? String
         else { return nil }
-        self.init(id: id, userId: userId, name: name)
+        self.init(id: id, userId: userId, name: name, color: r["color"] as? String ?? "")
     }
 }
 
@@ -263,9 +264,10 @@ extension Loan {
         if let n = r["termMonths"]  as? NSNumber    { termMonths      = n.intValue }
         if let d = r["startDate"]   as? Date        { startDate       = d }
         if let n = r["paymentDay"]  as? NSNumber    { paymentDay      = n.intValue }
-        isArchived          = (r["isArchived"]          as? NSNumber)?.boolValue ?? isArchived
-        isIncludedInBalance = (r["isIncludedInBalance"] as? NSNumber)?.boolValue ?? isIncludedInBalance
+        isArchived = (r["isArchived"] as? NSNumber)?.boolValue ?? isArchived
         if let d = r["firstPaymentDate"] as? Date, d.timeIntervalSince1970 > 0 { firstPaymentDate = d }
+        let borrowerStr = r["borrowerName"] as? String ?? ""
+        borrowerName = borrowerStr.isEmpty ? nil : borrowerStr
     }
 
     func toCKRecord(zoneID: CKRecordZone.ID) -> CKRecord {
@@ -286,6 +288,7 @@ extension Loan {
         r["isIncludedInBalance"] = isIncludedInBalance as NSNumber
         r["currency"]            = currency
         r["firstPaymentDate"]    = firstPaymentDate as NSDate? ?? NSDate(timeIntervalSince1970: 0)
+        r["borrowerName"]        = borrowerName ?? ""
         return r
     }
 
@@ -302,6 +305,7 @@ extension Loan {
               let moStr   = r["monthlyPayment"]  as? String
         else { return nil }
 
+        let borrowerStr = r["borrowerName"] as? String ?? ""
         self.init(
             userId: userId,
             name: name,
@@ -310,7 +314,8 @@ extension Loan {
             termMonths:     termN.intValue,
             startDate:      startD,
             paymentDay:     dayN.intValue,
-            monthlyPayment: Decimal(string: moStr)   ?? 0
+            monthlyPayment: Decimal(string: moStr)   ?? 0,
+            borrowerName:   borrowerStr.isEmpty ? nil : borrowerStr
         )
         self.id                  = id
         currency                 = r["currency"]            as? String ?? "RUB"

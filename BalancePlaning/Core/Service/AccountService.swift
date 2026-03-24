@@ -41,6 +41,7 @@ class AccountService {
     }
     
     func deleteAccount(_ account: Account) {
+        tombstone(id: account.id, userId: account.userId)
         context.delete(account)
         try? context.save()
     }
@@ -51,7 +52,11 @@ class AccountService {
         let linked = fetchUserTransactions().filter {
             $0.fromAccount?.id == accountId || $0.toAccount?.id == accountId
         }
-        for t in linked { context.delete(t) }
+        for t in linked {
+            tombstone(id: t.id, userId: t.userId)
+            context.delete(t)
+        }
+        tombstone(id: accountId, userId: account.userId)
         context.delete(account)
         try? context.save()
     }
@@ -66,8 +71,16 @@ class AccountService {
             if t.fromAccount?.id == accountId { t.fromAccount = nil }
             if t.toAccount?.id == accountId   { t.toAccount = nil }
         }
+        tombstone(id: accountId, userId: account.userId)
         context.delete(account)
         try? context.save()
+    }
+
+    private func tombstone(id: UUID, userId: UUID) {
+        let existing = (try? context.fetch(FetchDescriptor<DeletedRecord>())) ?? []
+        if !existing.contains(where: { $0.deletedId == id }) {
+            context.insert(DeletedRecord(deletedId: id, userId: userId))
+        }
     }
     
     private func fetchUserTransactions() -> [Transaction] {

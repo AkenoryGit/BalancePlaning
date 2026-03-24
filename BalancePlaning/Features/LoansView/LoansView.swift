@@ -238,6 +238,11 @@ private struct LoanCard: View {
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    if let borrower = loan.borrowerName, !borrower.isEmpty {
+                        Label(borrower, systemImage: "person.fill")
+                            .font(.caption2)
+                            .foregroundStyle(Color(hex: "E74C3C").opacity(0.8))
+                    }
                 }
 
                 Spacer()

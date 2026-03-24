@@ -9,6 +9,16 @@ import SwiftUI
 
 struct CardModifier: ViewModifier {
     var tint: Color? = nil
+    var trailingRadius: CGFloat = AppTheme.cardRadius
+
+    private var shape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: AppTheme.cardRadius,
+            bottomLeadingRadius: AppTheme.cardRadius,
+            bottomTrailingRadius: trailingRadius,
+            topTrailingRadius: trailingRadius
+        )
+    }
 
     func body(content: Content) -> some View {
         content
@@ -18,10 +28,10 @@ struct CardModifier: ViewModifier {
                     if let tint { tint.opacity(0.08) }
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+            .clipShape(shape)
             .overlay {
                 if let tint {
-                    RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                    shape
                         .inset(by: 0.75)
                         .stroke(tint.opacity(0.55), lineWidth: 1.5)
                 }
@@ -31,8 +41,8 @@ struct CardModifier: ViewModifier {
 }
 
 extension View {
-    func cardStyle(tint: Color? = nil) -> some View {
-        modifier(CardModifier(tint: tint))
+    func cardStyle(tint: Color? = nil, trailingRadius: CGFloat = AppTheme.cardRadius) -> some View {
+        modifier(CardModifier(tint: tint, trailingRadius: trailingRadius))
     }
 }
 
