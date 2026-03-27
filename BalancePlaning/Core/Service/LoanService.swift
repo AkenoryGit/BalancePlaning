@@ -11,7 +11,8 @@ import SwiftData
 struct LoanScheduleEntry: Identifiable {
     let id = UUID()
     let paymentNumber: Int
-    let date: Date
+    let date: Date           // дата отображения: для оплаченных — фактическая дата платежа, для будущих — плановая
+    let scheduledDate: Date  // плановая дата слота графика (для определения логики отмены)
     let totalAmount: Decimal
     let principalPart: Decimal
     let interestPart: Decimal
@@ -46,14 +47,17 @@ struct LoanService {
 
     func updateLoan(_ loan: Loan, name: String, interestRate: Decimal,
                     termMonths: Int, paymentDay: Int,
-                    firstPaymentDate: Date? = nil, monthlyPaymentOverride: Decimal? = nil,
-                    borrowerName: String? = nil) {
+                    firstPaymentDate: Date? = nil, firstPaymentAmount: Decimal? = nil,
+                    monthlyPaymentOverride: Decimal? = nil,
+                    borrowerName: String? = nil, iconId: String? = nil) {
         loan.name = name
         loan.interestRate = interestRate
         loan.termMonths = termMonths
         loan.paymentDay = paymentDay
         loan.firstPaymentDate = firstPaymentDate
+        loan.firstPaymentAmount = firstPaymentAmount
         loan.borrowerName = borrowerName
+        if let iconId { loan.iconId = iconId }
         loan.monthlyPayment = monthlyPaymentOverride ?? LoanService.annuityPayment(
             principal: loan.originalAmount, annualRate: interestRate, months: termMonths)
         try? context.save()
@@ -67,6 +71,18 @@ struct LoanService {
                 context.insert(DeletedRecord(deletedId: p.id, userId: p.userId))
             }
             context.delete(p)
+        }
+        // Удаляем связанные транзакции (создаются при каждом платеже и досрочке)
+        let loanId = loan.id
+        let userId = loan.userId
+        let txPredicate = #Predicate<Transaction> { $0.userId == userId }
+        if let txs = try? context.fetch(FetchDescriptor<Transaction>(predicate: txPredicate)) {
+            for tx in txs where tx.loanId == loanId {
+                if !tombstonedIds.contains(tx.id) {
+                    context.insert(DeletedRecord(deletedId: tx.id, userId: userId))
+                }
+                context.delete(tx)
+            }
         }
         if !tombstonedIds.contains(loan.id) {
             context.insert(DeletedRecord(deletedId: loan.id, userId: loan.userId))
@@ -101,12 +117,15 @@ struct LoanService {
         )
         context.insert(tx)
 
-        // Архивируем если фактически погашен весь основной долг
+        // Архивируем если остаток долга равен нулю
         let updatedPayments = allPayments + [payment]
-        let schedule = generateSchedule(for: loan, payments: updatedPayments)
-        let paidPrincipal = schedule.filter { $0.isPaid }.reduce(Decimal.zero) { $0 + $1.principalPart }
-        if loan.originalAmount - paidPrincipal <= 0.01 { loan.isArchived = true }
+        if remainingPrincipal(for: loan, payments: updatedPayments) <= 0.01 { loan.isArchived = true }
         try? context.save()
+
+        // После досрочного погашения обновляем запланированные будущие платежи
+        if isPrepayment {
+            syncFutureSchedule(for: loan, allPayments: updatedPayments)
+        }
     }
 
     func deletePayment(_ payment: LoanPayment, loan: Loan, allPayments: [LoanPayment]) {
@@ -142,9 +161,10 @@ struct LoanService {
     /// Создаёт кредит и сразу все запланированные платежи (операции).
     func addLoanWithSchedule(name: String, originalAmount: Decimal, interestRate: Decimal,
                               termMonths: Int, startDate: Date, paymentDay: Int, currency: String,
-                              firstPaymentDate: Date?, monthlyPaymentOverride: Decimal?,
-                              scheduledEntries: [(date: Date, amount: Decimal)],
-                              borrowerName: String? = nil) {
+                              firstPaymentDate: Date?, firstPaymentAmount: Decimal? = nil,
+                              monthlyPaymentOverride: Decimal?,
+                              scheduledEntries: [(date: Date, amount: Decimal, isPrepayment: Bool, prepaymentType: PrepaymentType?)],
+                              borrowerName: String? = nil, iconId: String = "") {
         guard let uid = currentUserId() else { return }
         let payment = monthlyPaymentOverride ?? LoanService.annuityPayment(
             principal: originalAmount, annualRate: interestRate, months: termMonths)
@@ -153,15 +173,22 @@ struct LoanService {
                         startDate: startDate, paymentDay: paymentDay,
                         monthlyPayment: payment, currency: currency,
                         firstPaymentDate: firstPaymentDate, borrowerName: borrowerName)
+        loan.iconId = iconId
+        loan.firstPaymentAmount = firstPaymentAmount
         context.insert(loan)
         for entry in scheduledEntries {
+            let note = entry.isPrepayment
+                ? "Досрочное погашение: \(name)"
+                : "Платёж по кредиту: \(name)"
             let lp = LoanPayment(loanId: loan.id, userId: uid, date: entry.date,
-                                  totalAmount: entry.amount, isPrepayment: false,
-                                  prepaymentType: nil, fromAccountId: nil)
+                                  totalAmount: entry.amount,
+                                  isPrepayment: entry.isPrepayment,
+                                  prepaymentType: entry.isPrepayment ? entry.prepaymentType : nil,
+                                  fromAccountId: nil)
             context.insert(lp)
             let tx = Transaction(fromAccount: nil, userId: uid, amount: entry.amount,
                                  date: entry.date, type: .expense,
-                                 note: "Платёж по кредиту: \(name)", loanId: loan.id)
+                                 note: note, loanId: loan.id)
             context.insert(tx)
         }
         try? context.save()
@@ -169,9 +196,7 @@ struct LoanService {
         let loanId = loan.id
         let pred = #Predicate<LoanPayment> { $0.loanId == loanId }
         if let created = try? context.fetch(FetchDescriptor<LoanPayment>(predicate: pred)) {
-            let schedule = generateSchedule(for: loan, payments: created)
-            let paidPrincipal = schedule.filter { $0.isPaid }.reduce(Decimal.zero) { $0 + $1.principalPart }
-            if loan.originalAmount - paidPrincipal <= 0.01 { loan.isArchived = true }
+            if remainingPrincipal(for: loan, payments: created) <= 0.01 { loan.isArchived = true }
             try? context.save()
         }
     }
@@ -192,6 +217,227 @@ struct LoanService {
         }
         payment.date = date
         try? context.save()
+    }
+
+    /// Заменяет все запланированные будущие платежи кредита новым набором.
+    /// Используется при редактировании графика из AddLoanSheet.
+    func updateSchedule(for loan: Loan, allPayments: [LoanPayment],
+                        newEntries: [(date: Date, amount: Decimal, isPrepayment: Bool, prepaymentType: PrepaymentType?)]) {
+        let today = Date()
+        let loanId = loan.id
+        let uid = loan.userId
+        let tombstones = (try? context.fetch(FetchDescriptor<DeletedRecord>())) ?? []
+        let tombstonedIds = Set(tombstones.map { $0.deletedId })
+
+        let existingFuture = allPayments
+            .filter { $0.loanId == loanId && !$0.isPrepayment && $0.date > today }
+        for p in existingFuture {
+            deleteLinkedTransaction(loanId: loanId, userId: uid,
+                                    date: p.date, amount: p.totalAmount,
+                                    tombstonedIds: tombstonedIds)
+            if !tombstonedIds.contains(p.id) {
+                context.insert(DeletedRecord(deletedId: p.id, userId: uid))
+            }
+            context.delete(p)
+        }
+
+        for entry in newEntries {
+            let note = entry.isPrepayment
+                ? "Досрочное погашение: \(loan.name)"
+                : "Платёж по кредиту: \(loan.name)"
+            let lp = LoanPayment(loanId: loanId, userId: uid, date: entry.date,
+                                  totalAmount: entry.amount,
+                                  isPrepayment: entry.isPrepayment,
+                                  prepaymentType: entry.isPrepayment ? entry.prepaymentType : nil,
+                                  fromAccountId: nil)
+            context.insert(lp)
+            let tx = Transaction(fromAccount: nil, userId: uid, amount: entry.amount,
+                                 date: entry.date, type: .expense, note: note, loanId: loanId)
+            context.insert(tx)
+        }
+        try? context.save()
+    }
+
+    /// Пересчитывает и синхронизирует запланированные будущие LoanPayment + Transaction.
+    /// Вызывается после досрочного погашения и при обнаружении несинхронизированных слотов в графике.
+    func syncFutureSchedule(for loan: Loan, allPayments: [LoanPayment]) {
+        let today = Date()
+        let loanId = loan.id
+        let uid = loan.userId
+
+        let newSchedule = generateSchedule(for: loan, payments: allPayments)
+        let futureSlots = newSchedule.filter { !$0.isPaid && !$0.isPrepayment }
+
+        let existingFuture = allPayments
+            .filter { $0.loanId == loanId && !$0.isPrepayment && $0.date > today }
+            .sorted { $0.date < $1.date }
+
+        let tombstones = (try? context.fetch(FetchDescriptor<DeletedRecord>())) ?? []
+        let tombstonedIds = Set(tombstones.map { $0.deletedId })
+
+        for (idx, existing) in existingFuture.enumerated() {
+            if idx < futureSlots.count {
+                let slot = futureSlots[idx]
+                // Обновляем связанную транзакцию
+                let predTx = #Predicate<Transaction> { $0.userId == uid }
+                if let txs = try? context.fetch(FetchDescriptor<Transaction>(predicate: predTx)) {
+                    for tx in txs
+                    where tx.loanId == loanId
+                       && Calendar.current.isDate(tx.date, inSameDayAs: existing.date)
+                       && tx.amount == existing.totalAmount {
+                        tx.amount = slot.totalAmount
+                        tx.date = slot.date
+                    }
+                }
+                existing.totalAmount = slot.totalAmount
+                existing.date = slot.date
+            } else {
+                // Кредит стал короче (reduceTerm) — удаляем лишний плановый платёж
+                deleteLinkedTransaction(loanId: loanId, userId: uid,
+                                        date: existing.date, amount: existing.totalAmount,
+                                        tombstonedIds: tombstonedIds)
+                if !tombstonedIds.contains(existing.id) {
+                    context.insert(DeletedRecord(deletedId: existing.id, userId: uid))
+                }
+                context.delete(existing)
+            }
+        }
+
+        // Если нужно больше записей (кредит без предсозданного графика)
+        if futureSlots.count > existingFuture.count {
+            for idx in existingFuture.count..<futureSlots.count {
+                let slot = futureSlots[idx]
+                let lp = LoanPayment(loanId: loanId, userId: uid, date: slot.date,
+                                      totalAmount: slot.totalAmount, isPrepayment: false,
+                                      prepaymentType: nil, fromAccountId: nil)
+                context.insert(lp)
+                let tx = Transaction(fromAccount: nil, userId: uid, amount: slot.totalAmount,
+                                     date: slot.date, type: .expense,
+                                     note: "Платёж по кредиту: \(loan.name)", loanId: loanId)
+                context.insert(tx)
+            }
+        }
+
+        try? context.save()
+    }
+
+    private func deleteLinkedTransaction(loanId: UUID, userId: UUID,
+                                          date: Date, amount: Decimal,
+                                          tombstonedIds: Set<UUID>) {
+        let predTx = #Predicate<Transaction> { $0.userId == userId }
+        if let txs = try? context.fetch(FetchDescriptor<Transaction>(predicate: predTx)) {
+            for tx in txs
+            where tx.loanId == loanId
+               && Calendar.current.isDate(tx.date, inSameDayAs: date)
+               && tx.amount == amount {
+                if !tombstonedIds.contains(tx.id) {
+                    context.insert(DeletedRecord(deletedId: tx.id, userId: userId))
+                }
+                context.delete(tx)
+            }
+        }
+    }
+
+    // MARK: - Повторяющиеся досрочные погашения
+
+    /// Создаёт серию повторяющихся досрочных платежей.
+    /// Останавливает создание как только кредит по прогнозу будет полностью погашен.
+    func addRecurringPrepayments(
+        to loan: Loan,
+        startDate: Date, endDate: Date,
+        amount: Decimal,
+        prepaymentType: PrepaymentType,
+        fromAccount: Account?,
+        interval: RecurringInterval,
+        intervalDays: Int = 7,
+        allPayments: [LoanPayment],
+        comment: String = ""
+    ) {
+        guard let uid = currentUserId() else { return }
+        let dates = Self.generateDates(from: startDate, to: endDate, interval: interval, intervalDays: intervalDays)
+        guard !dates.isEmpty else { return }
+
+        let groupId = UUID()
+        var simulatedPayments = Array(allPayments)
+
+        for date in dates {
+            // Проверяем по прогнозному графику: кредит уже погашен?
+            let schedule = generateSchedule(for: loan, payments: simulatedPayments)
+            guard (schedule.last?.remainingAfter ?? 0) > 0.01 else { break }
+
+            let lp = LoanPayment(loanId: loan.id, userId: uid, date: date,
+                                  totalAmount: amount, isPrepayment: true,
+                                  prepaymentType: prepaymentType, fromAccountId: fromAccount?.id)
+            lp.recurringGroupId = groupId
+            context.insert(lp)
+
+            let tx = Transaction(fromAccount: fromAccount, userId: uid, amount: amount,
+                                 date: date, type: .expense,
+                                 note: "Досрочное погашение: \(loan.name)",
+                                 comment: comment, loanId: loan.id)
+            tx.recurringGroupId = groupId
+            tx.recurringInterval = interval
+            if interval == .everyNDays { tx.recurringIntervalDays = intervalDays }
+            context.insert(tx)
+
+            simulatedPayments.append(lp)
+
+            // После добавления этого платежа кредит погашен — больше не создаём
+            let updatedSchedule = generateSchedule(for: loan, payments: simulatedPayments)
+            if (updatedSchedule.last?.remainingAfter ?? 0) <= 0.01 {
+                loan.isArchived = true
+                break
+            }
+        }
+        try? context.save()
+        syncFutureSchedule(for: loan, allPayments: simulatedPayments)
+    }
+
+    /// Удаляет все повторяющиеся досрочные платежи серии начиная с указанной даты.
+    func deleteRecurringPrepayments(groupId: UUID, from date: Date, loan: Loan, allPayments: [LoanPayment]) {
+        let uid = loan.userId
+        let tombstones = (try? context.fetch(FetchDescriptor<DeletedRecord>())) ?? []
+        let tombstonedIds = Set(tombstones.map { $0.deletedId })
+
+        let toDelete = allPayments.filter {
+            $0.recurringGroupId == groupId && $0.date >= date && $0.isPrepayment
+        }
+        for p in toDelete {
+            deleteLinkedTransaction(loanId: loan.id, userId: uid,
+                                    date: p.date, amount: p.totalAmount,
+                                    tombstonedIds: tombstonedIds)
+            if !tombstonedIds.contains(p.id) {
+                context.insert(DeletedRecord(deletedId: p.id, userId: uid))
+            }
+            context.delete(p)
+        }
+        // Разархивируем кредит если он был закрыт этой серией
+        if loan.isArchived {
+            let remaining = allPayments.filter { !toDelete.map(\.id).contains($0.id) }
+            if remainingPrincipal(for: loan, payments: remaining) > 0.01 {
+                loan.isArchived = false
+            }
+        }
+        try? context.save()
+        let remaining = allPayments.filter { !toDelete.map(\.id).contains($0.id) }
+        syncFutureSchedule(for: loan, allPayments: remaining)
+    }
+
+    private static func generateDates(from startDate: Date, to endDate: Date,
+                                       interval: RecurringInterval, intervalDays: Int = 7) -> [Date] {
+        var dates: [Date] = []
+        var current = startDate
+        while current <= endDate {
+            dates.append(current)
+            switch interval {
+            case .daily:        current = Calendar.current.date(byAdding: .day, value: 1, to: current) ?? current
+            case .everyNDays:   current = Calendar.current.date(byAdding: .day, value: intervalDays, to: current) ?? current
+            case .weekly:       current = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: current) ?? current
+            case .biweekly:     current = Calendar.current.date(byAdding: .weekOfYear, value: 2, to: current) ?? current
+            case .monthly:      current = Calendar.current.date(byAdding: .month, value: 1, to: current) ?? current
+            }
+        }
+        return dates
     }
 
     // MARK: - Расчёты
@@ -225,6 +471,9 @@ struct LoanService {
 
         var entries: [LoanScheduleEntry] = []
         var paymentNumber = 1
+        // Накопленный незакрытый процент (появляется когда досрочный/плановый платёж
+        // меньше начисленных процентов за период; переходит на следующий платёж).
+        var interestCarryover: Double = 0.0
         // Дата последнего события — с неё считаем накопленные проценты
         var lastDate = loan.startDate
 
@@ -241,14 +490,16 @@ struct LoanService {
             prepaymentQueue.removeAll { prepays.map(\.id).contains($0.id) }
 
             for pp in prepays {
-                // Проценты накоплены за фактические дни с последнего платежа
+                // Проценты накоплены за фактические дни с последнего платежа + неоплаченный остаток
                 let days = cal.dateComponents([.day], from: lastDate, to: pp.date).day ?? 0
-                let accruedInterest = principal * dailyRate * Double(days)
+                let totalAccrued = principal * dailyRate * Double(days) + interestCarryover
 
                 let ppAmt = LoanService.toDouble(pp.totalAmount)
                 // Сначала гасятся накопленные проценты, остаток идёт в тело долга
-                let interestPaid  = min(accruedInterest, ppAmt)
+                let interestPaid  = min(totalAccrued, ppAmt)
                 let principalPaid = max(0, ppAmt - interestPaid)
+                // Неоплаченная часть процентов переходит на следующий период
+                interestCarryover = max(0, totalAccrued - interestPaid)
                 principal = max(0, principal - principalPaid)
                 lastDate = pp.date
 
@@ -264,6 +515,7 @@ struct LoanService {
                 entries.append(LoanScheduleEntry(
                     paymentNumber: paymentNumber,
                     date: pp.date,
+                    scheduledDate: pp.date,
                     totalAmount: pp.totalAmount,
                     principalPart: Decimal(principalPaid).rounded2(),
                     interestPart: Decimal(interestPaid).rounded2(),
@@ -283,23 +535,56 @@ struct LoanService {
             let matched = matchedIndex.map { regularQueue.remove(at: $0) }
 
             // Проценты за фактические дни с последнего платежа/досрочки до даты платежа
+            // + перенесённый остаток процентов от предыдущего периода (carryover)
             let days = cal.dateComponents([.day], from: lastDate, to: schedDate).day ?? 0
-            let interest = principal * dailyRate * Double(days)
+            let interest = principal * dailyRate * Double(days) + interestCarryover
+            interestCarryover = 0.0
 
-            var principalPart = currentMonthlyPayment - interest
-            principalPart = max(0, min(principalPart, principal))
-            let totalPaid = principalPart + interest
+            let isPaidPayment = matched.map { $0.date <= Date() } ?? false
+
+            // Для любого сохранённого LoanPayment (оплаченного или запланированного)
+            // используем его реальную сумму. Это уважает банковские графики с нестандартными
+            // периодами (напр., первый платёж через 60 дней при стандартном ежемесячном платеже).
+            // Если LoanPayment отсутствует — берём сумму первого платежа от банка (слот 1) или ежемесячный.
+            let fallbackPayment: Double
+            if month == 1, let fp = loan.firstPaymentAmount, fp > 0 {
+                fallbackPayment = LoanService.toDouble(fp)
+            } else {
+                fallbackPayment = currentMonthlyPayment
+            }
+            let effectivePayment = matched.map { LoanService.toDouble($0.totalAmount) } ?? fallbackPayment
+
+            // Из суммы платежа сначала гасятся проценты, остаток — тело долга.
+            // Если платёж меньше накопленных процентов (нестандартный первый период с 60+ днями),
+            // дефицит капитализируется в тело долга — именно так поступают банки.
+            var principalPart = effectivePayment - interest
+            var totalPayment = effectivePayment
+            if principalPart < 0 {
+                principal += (-principalPart)  // дефицит процентов добавляется к долгу
+                principalPart = 0
+            } else if principalPart > principal {
+                // Последний платёж: гасим только остаток долга + начисленный процент
+                principalPart = principal
+                totalPayment = principalPart + interest
+            } else {
+                principalPart = min(principalPart, principal)
+            }
+            let interestPart = totalPayment - principalPart
             principal = max(0, principal - principalPart)
             lastDate = schedDate
 
+            // Для оплаченных платежей показываем реальную дату из LoanPayment,
+            // для будущих — расчётную дату графика
+            let displayDate = isPaidPayment ? (matched?.date ?? schedDate) : schedDate
             entries.append(LoanScheduleEntry(
                 paymentNumber: paymentNumber,
-                date: schedDate,
-                totalAmount: Decimal(totalPaid).rounded2(),
+                date: displayDate,
+                scheduledDate: schedDate,
+                totalAmount: Decimal(totalPayment).rounded2(),
                 principalPart: Decimal(principalPart).rounded2(),
-                interestPart: Decimal(interest).rounded2(),
+                interestPart: Decimal(interestPart).rounded2(),
                 remainingAfter: Decimal(principal).rounded2(),
-                isPaid: matched.map { $0.date <= Date() } ?? false,
+                isPaid: isPaidPayment,
                 isPrepayment: false,
                 linkedPaymentId: matched?.id
             ))
@@ -310,12 +595,15 @@ struct LoanService {
         return entries.filter { $0.totalAmount > 0 }
     }
 
-    /// Остаток долга — сумма principalPart по фактически оплаченным записям (≤ сегодня).
+    /// Остаток долга — берём remainingAfter из последней оплаченной записи в графике.
+    /// Этот подход корректно учитывает капитализацию процентов (напр., нестандартный первый период).
     func remainingPrincipal(for loan: Loan, payments: [LoanPayment]) -> Decimal {
         let paidToDate = payments.filter { $0.date <= Date.now }
         let schedule = generateSchedule(for: loan, payments: paidToDate)
-        let paidPrincipal = schedule.filter { $0.isPaid }.reduce(Decimal.zero) { $0 + $1.principalPart }
-        return max(.zero, loan.originalAmount - paidPrincipal)
+        if let lastPaid = schedule.filter({ $0.isPaid }).last {
+            return max(.zero, lastPaid.remainingAfter)
+        }
+        return loan.originalAmount
     }
 
     /// Текущий плановый платёж — на основе платежей ≤ сегодня.

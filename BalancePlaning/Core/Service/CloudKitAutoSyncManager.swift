@@ -15,9 +15,11 @@ class CloudKitAutoSyncManager: ObservableObject {
 
     static let shared = CloudKitAutoSyncManager()
 
-    @Published var isSyncing       = false
-    @Published var lastSyncError:    String?
-    @Published var lastSyncDate:     Date?
+    @Published var isSyncing          = false
+    @Published var lastSyncError:      String?
+    @Published var lastSyncDate:       Date?
+    /// Выставляется в true когда владелец остановил шару — участнику нужно выйти из бюджета
+    @Published var sharingWasStopped = false
 
     private var modelContainer: ModelContainer?
     private var pendingSyncTask: Task<Void, Never>?
@@ -115,6 +117,8 @@ class CloudKitAutoSyncManager: ObservableObject {
                 try await service.ownerFullSync()
             }
             lastSyncDate = Date()
+        } catch CloudKitError.sharingWasStopped, CloudKitError.zoneNotFound {
+            sharingWasStopped = true
         } catch {
             lastSyncError = error.localizedDescription
         }
@@ -160,6 +164,9 @@ class CloudKitAutoSyncManager: ObservableObject {
                 try await service.ownerFullSync()
             }
             lastSyncDate = Date()
+        } catch CloudKitError.sharingWasStopped, CloudKitError.zoneNotFound {
+            // Владелец остановил шару — сигнализируем View чтобы он выполнил выход
+            sharingWasStopped = true
         } catch {
             lastSyncError = error.localizedDescription
         }

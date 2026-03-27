@@ -20,3 +20,17 @@ struct DayAmount: Identifiable {
     let amount: Double
     let kind: String
 }
+
+struct MonthSummary: Identifiable {
+    let id = UUID()
+    let month: Date
+    let income: Double
+    let expense: Double
+}
+
+struct MonthBar: Identifiable {
+    let id = UUID()
+    let month: Date
+    let amount: Double
+    let kind: String // "Доходы" или "Расходы"
+}

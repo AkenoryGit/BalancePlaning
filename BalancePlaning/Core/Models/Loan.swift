@@ -22,8 +22,12 @@ class Loan {
     var currency: String = "RUB"
     /// nil = первый платёж через месяц после startDate (стандарт)
     var firstPaymentDate: Date? = nil
+    /// Сумма первого платежа от банка, если отличается от ежемесячного (нестандартный первый период)
+    var firstPaymentAmount: Decimal? = nil
     /// Имя заёмщика (для семейного бюджета)
     var borrowerName: String? = nil
+    /// Идентификатор иконки банка (см. BankIcons), пустая строка = по умолчанию
+    var iconId: String = ""
 
     init(userId: UUID, name: String, originalAmount: Decimal, interestRate: Decimal,
          termMonths: Int, startDate: Date, paymentDay: Int, monthlyPayment: Decimal,

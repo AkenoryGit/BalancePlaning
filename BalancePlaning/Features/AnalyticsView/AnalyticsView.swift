@@ -20,7 +20,9 @@ struct AnalyticsView: View {
     @Query private var allCategories: [Category]
     @Query private var allCurrencies: [Currency]
     @Query private var allLoans: [Loan]
+    @Query private var allLoanPayments: [LoanPayment]
 
+    @EnvironmentObject private var autoSync: CloudKitAutoSyncManager
     @State private var includeLoanPayments: Bool = true
 
     private var accountService: AccountService { AccountService(context: context) }
@@ -32,9 +34,10 @@ struct AnalyticsView: View {
         AppSettings.shared.bundle.localizedString(forKey: "Расходы", value: "Расходы", table: nil)
     }
 
+    // MARK: - Computed: базовые данные
+
     private var userTransactions: [Transaction] {
         guard let userId = currentUserId() else { return [] }
-        // Корректировки не участвуют в аналитике
         return allTransactions.filter { $0.userId == userId && $0.type != .correction }
     }
 
@@ -52,7 +55,6 @@ struct AnalyticsView: View {
         }
     }
 
-    /// Транзакции за месяц с учётом фильтра
     private var filteredMonthlyTransactions: [Transaction] {
         monthlyTransactions.filter { t in
             if t.loanId != nil { return includeLoanPayments }
@@ -60,7 +62,6 @@ struct AnalyticsView: View {
         }
     }
 
-    /// Валюта для транзакции — для платежей без счёта берём из кредита
     private func expenseCurrency(for t: Transaction) -> String {
         if let account = t.fromAccount { return account.currency }
         if let loanId = t.loanId {
@@ -69,7 +70,6 @@ struct AnalyticsView: View {
         return "RUB"
     }
 
-    /// Доходы по валютам: код → сумма
     private var monthlyIncomeByCurrency: [(code: String, amount: Decimal)] {
         var dict: [String: Decimal] = [:]
         for t in filteredMonthlyTransactions where t.type == .income {
@@ -80,7 +80,6 @@ struct AnalyticsView: View {
                    .sorted { $0.amount > $1.amount }
     }
 
-    /// Расходы по валютам: код → сумма
     private var monthlyExpenseByCurrency: [(code: String, amount: Decimal)] {
         var dict: [String: Decimal] = [:]
         for t in filteredMonthlyTransactions where t.type == .expense {
@@ -91,7 +90,6 @@ struct AnalyticsView: View {
                    .sorted { $0.amount > $1.amount }
     }
 
-    /// Баланс по валютам (доход − расход)
     private var monthlyBalanceByCurrency: [(code: String, amount: Decimal)] {
         var dict: [String: Decimal] = [:]
         for entry in monthlyIncomeByCurrency  { dict[entry.code, default: .zero] += entry.amount }
@@ -100,7 +98,6 @@ struct AnalyticsView: View {
                    .sorted { abs($0.amount) > abs($1.amount) }
     }
 
-    /// Топ расходов, сгруппированных по корневой категории
     private var expenseByCategoryGroup: [CategoryExpenseGroup] {
         var amountById: [UUID: Decimal] = [:]
         var loanPaymentsTotal: Decimal = .zero
@@ -114,7 +111,6 @@ struct AnalyticsView: View {
             amountById[cat.id, default: .zero] += t.amount
         }
 
-        // Резолвим корневую категорию и накапливаем
         var rootTotals: [UUID: Decimal] = [:]
         var childrenMap: [UUID: [UUID: Decimal]] = [:]
 
@@ -160,7 +156,6 @@ struct AnalyticsView: View {
         return groups
     }
 
-    /// Топ доходов, сгруппированных по корневой категории
     private var incomeByCategoryGroup: [CategoryExpenseGroup] {
         var amountById: [UUID: Decimal] = [:]
         for t in filteredMonthlyTransactions where t.type == .income {
@@ -203,7 +198,6 @@ struct AnalyticsView: View {
             .map { $0 }
     }
 
-    /// Данные по дням для бар-чарта
     private var dailyChartData: [DayAmount] {
         var incomeByDay: [Int: Double] = [:]
         var expenseByDay: [Int: Double] = [:]
@@ -231,11 +225,75 @@ struct AnalyticsView: View {
         return result.sorted { $0.date < $1.date }
     }
 
+    // MARK: - Computed: новые данные
+
+    /// Основная валюта аналитики
+    private var currencyCodeForAnalytics: String {
+        monthlyExpenseByCurrency.first?.code
+            ?? monthlyIncomeByCurrency.first?.code
+            ?? "RUB"
+    }
+
+    /// Доходы за месяц в основной валюте (Double для расчётов)
+    private var monthlyIncomeDouble: Double {
+        let code = currencyCodeForAnalytics
+        guard let entry = monthlyIncomeByCurrency.first(where: { $0.code == code }) else {
+            return monthlyIncomeByCurrency.first.map {
+                Double(truncating: NSDecimalNumber(decimal: $0.amount))
+            } ?? 0
+        }
+        return Double(truncating: NSDecimalNumber(decimal: entry.amount))
+    }
+
+    /// Данные за последние 6 месяцев для сравнительного чарта
+    private var last6MonthsData: [MonthSummary] {
+        let cal = Calendar.current
+        let toDouble: (Decimal) -> Double = { Double(truncating: NSDecimalNumber(decimal: $0)) }
+
+        return (0..<6).compactMap { offset -> MonthSummary? in
+            guard let month = cal.date(byAdding: .month, value: -(5 - offset), to: selectedMonth) else { return nil }
+
+            var incomeTotal: Decimal = .zero
+            var expenseTotal: Decimal = .zero
+
+            for t in userTransactions {
+                guard cal.isDate(t.date, equalTo: month, toGranularity: .month) else { continue }
+                if !includeLoanPayments && t.loanId != nil { continue }
+                if t.type == .income  { incomeTotal  += t.amount }
+                if t.type == .expense { expenseTotal += t.amount }
+            }
+
+            return MonthSummary(
+                month: month,
+                income: toDouble(incomeTotal),
+                expense: toDouble(expenseTotal)
+            )
+        }
+    }
+
+    /// Топ-5 крупнейших операций за месяц
+    private var topTransactions: [Transaction] {
+        filteredMonthlyTransactions
+            .filter { $0.type == .income || $0.type == .expense }
+            .sorted { $0.amount > $1.amount }
+            .prefix(5)
+            .map { $0 }
+    }
+
+    /// Активные кредиты текущего пользователя
+    private var activeLoans: [Loan] {
+        guard let userId = currentUserId() else { return [] }
+        return allLoans.filter { $0.userId == userId && !$0.isArchived }
+    }
+
+    // MARK: - Body
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
 
+                    // Заголовок + кнопка фильтра
                     HStack {
                         Text("Аналитика")
                             .font(.largeTitle.bold())
@@ -266,49 +324,39 @@ struct AnalyticsView: View {
                     MonthSelector(selectedMonth: $selectedMonth)
                         .padding(.horizontal)
 
-                    // Баланс за месяц
-                    VStack(spacing: 6) {
-                        Text("Баланс за месяц")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if monthlyBalanceByCurrency.isEmpty {
-                            Text("0 ₽")
-                                .font(.largeTitle.bold())
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(monthlyBalanceByCurrency, id: \.code) { entry in
-                                let color = entry.amount >= 0 ? AppTheme.Colors.income : AppTheme.Colors.expense
-                                HStack(alignment: .firstTextBaseline, spacing: 3) {
-                                    Text(entry.amount >= 0 ? "+" : "")
-                                        .font(monthlyBalanceByCurrency.count == 1 ? .largeTitle.bold() : .title.bold())
-                                        .foregroundStyle(color)
-                                    Text(entry.amount, format: .number.precision(.fractionLength(0...2)))
-                                        .font(monthlyBalanceByCurrency.count == 1 ? .largeTitle.bold() : .title.bold())
-                                        .foregroundStyle(color)
-                                    Text(CurrencyInfo.symbol(for: entry.code, custom: allCurrencies))
-                                        .font(monthlyBalanceByCurrency.count == 1 ? .title2.bold() : .title3.bold())
-                                        .foregroundStyle(color)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.vertical, 8)
+                    // Сводка месяца: Доходы / Расходы / Поток
+                    monthlySummaryCards
 
-                    // Доходы / Расходы
-                    HStack(alignment: .top, spacing: 12) {
-                        MultiCurrencyPill(
-                            label: "Доходы",
-                            entries: monthlyIncomeByCurrency,
-                            color: AppTheme.Colors.income,
-                            customCurrencies: allCurrencies
-                        )
-                        MultiCurrencyPill(
-                            label: "Расходы",
-                            entries: monthlyExpenseByCurrency,
-                            color: AppTheme.Colors.expense,
-                            customCurrencies: allCurrencies
-                        )
-                    }
+                    // Донат-чарт по категориям
+                    CategoryDonutSection(
+                        expenseGroups: expenseByCategoryGroup,
+                        incomeGroups: incomeByCategoryGroup,
+                        customCurrencies: allCurrencies,
+                        currencyCode: currencyCodeForAnalytics
+                    )
+                    .cardStyle()
+                    .padding(.horizontal)
+
+                    // Сравнение за 6 месяцев
+                    MonthlyComparisonSection(
+                        data: last6MonthsData,
+                        selectedMonth: selectedMonth,
+                        customCurrencies: allCurrencies,
+                        currencyCode: currencyCodeForAnalytics
+                    )
+                    .cardStyle()
+                    .padding(.horizontal)
+
+                    // Бар-чарт по дням
+                    dailyChartCard
+
+                    // Топ-5 крупнейших операций
+                    TopTransactionsSection(
+                        transactions: topTransactions,
+                        allCategories: allCategories,
+                        customCurrencies: allCurrencies
+                    )
+                    .cardStyle()
                     .padding(.horizontal)
 
                     // Прогноз баланса
@@ -320,232 +368,16 @@ struct AnalyticsView: View {
                     .cardStyle()
                     .padding(.horizontal)
 
-                    // Бар-чарт по дням
-                    if !dailyChartData.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("По дням")
-                                .font(.headline)
-                                .padding(.horizontal)
-
-                            Chart(dailyChartData) { item in
-                                BarMark(
-                                    x: .value("День", item.date, unit: .day),
-                                    y: .value("Сумма", item.amount)
-                                )
-                                .foregroundStyle(by: .value("Тип", item.kind))
-                                .cornerRadius(4)
-                            }
-                            .chartForegroundStyleScale([
-                                incomeChartLabel:  AppTheme.Colors.income,
-                                expenseChartLabel: AppTheme.Colors.expense
-                            ])
-                            .chartXAxis {
-                                AxisMarks(values: .automatic(desiredCount: 6)) {
-                                    AxisValueLabel(format: .dateTime.day())
-                                    AxisGridLine()
-                                }
-                            }
-                            .chartLegend(position: .top, alignment: .leading)
-                            .frame(height: 180)
-                            .padding(.horizontal)
-                            .padding(.bottom, 8)
-                        }
-                        .padding(.vertical, 12)
+                    // Кредитная нагрузка
+                    if !activeLoans.isEmpty {
+                        LoanAnalyticsSection(
+                            activeLoans: activeLoans,
+                            allPayments: allLoanPayments,
+                            monthlyIncome: monthlyIncomeDouble,
+                            customCurrencies: allCurrencies
+                        )
                         .cardStyle()
                         .padding(.horizontal)
-                    }
-
-                    // Топ расходов по категориям
-                    if !expenseByCategoryGroup.isEmpty {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("Топ расходов")
-                                .font(.headline)
-                                .padding(.horizontal, 16)
-                                .padding(.top, 16)
-                                .padding(.bottom, 8)
-
-                            let maxAmount = expenseByCategoryGroup.first?.total ?? 1
-
-                            ForEach(Array(expenseByCategoryGroup.enumerated()), id: \.element.rootName) { index, group in
-                                VStack(spacing: 0) {
-                                    // Строка корневой категории
-                                    HStack(spacing: 12) {
-                                        Text("\(index + 1)")
-                                            .font(.caption.bold())
-                                            .foregroundStyle(.secondary)
-                                            .frame(width: 18)
-
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            HStack {
-                                                Text(group.rootName)
-                                                    .font(.subheadline.bold())
-                                                Spacer()
-                                                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                                                    Text(group.total, format: .number.precision(.fractionLength(0...2)))
-                                                        .font(.callout.bold())
-                                                    Text("₽")
-                                                        .font(.subheadline.bold())
-                                                        .foregroundStyle(.secondary)
-                                                }
-                                            }
-                                            GeometryReader { geo in
-                                                let barColor = group.rootColor ?? AppTheme.Colors.expense
-                                                ZStack(alignment: .leading) {
-                                                    RoundedRectangle(cornerRadius: 3)
-                                                        .fill(barColor.opacity(0.12))
-                                                        .frame(height: 6)
-                                                    RoundedRectangle(cornerRadius: 3)
-                                                        .fill(barColor)
-                                                        .frame(width: geo.size.width * CGFloat(group.total / maxAmount), height: 6)
-                                                }
-                                            }
-                                            .frame(height: 6)
-                                        }
-                                    }
-                                    .padding(.horizontal, 16)
-                                    .padding(.top, 12)
-                                    .padding(.bottom, group.children.isEmpty ? 12 : 6)
-
-                                    // Подкатегории
-                                    if !group.children.isEmpty {
-                                        ForEach(group.children, id: \.name) { child in
-                                            HStack(spacing: 12) {
-                                                // отступ под номер
-                                                Color.clear.frame(width: 18)
-
-                                                HStack {
-                                                    Text(child.name)
-                                                        .font(.caption)
-                                                        .foregroundStyle(.secondary)
-                                                    Spacer()
-                                                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                                                        Text(child.amount, format: .number.precision(.fractionLength(0...2)))
-                                                            .font(.caption.bold())
-                                                            .foregroundStyle(.secondary)
-                                                        Text("₽")
-                                                            .font(.caption2.bold())
-                                                            .foregroundStyle(.tertiary)
-                                                    }
-                                                }
-                                            }
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 4)
-                                        }
-                                        .padding(.bottom, 8)
-                                    }
-
-                                    if index < expenseByCategoryGroup.count - 1 {
-                                        Divider().padding(.leading, 46)
-                                    }
-                                }
-                            }
-                            .padding(.bottom, 8)
-                        }
-                        .cardStyle()
-                        .padding(.horizontal)
-                    }
-
-                    // Топ доходов по категориям
-                    if !incomeByCategoryGroup.isEmpty {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("Топ доходов")
-                                .font(.headline)
-                                .padding(.horizontal, 16)
-                                .padding(.top, 16)
-                                .padding(.bottom, 8)
-
-                            let maxAmount = incomeByCategoryGroup.first?.total ?? 1
-
-                            ForEach(Array(incomeByCategoryGroup.enumerated()), id: \.element.rootName) { index, group in
-                                VStack(spacing: 0) {
-                                    HStack(spacing: 12) {
-                                        Text("\(index + 1)")
-                                            .font(.caption.bold())
-                                            .foregroundStyle(.secondary)
-                                            .frame(width: 18)
-
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            HStack {
-                                                Text(group.rootName)
-                                                    .font(.subheadline.bold())
-                                                Spacer()
-                                                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                                                    Text(group.total, format: .number.precision(.fractionLength(0...2)))
-                                                        .font(.callout.bold())
-                                                    Text("₽")
-                                                        .font(.subheadline.bold())
-                                                        .foregroundStyle(.secondary)
-                                                }
-                                            }
-                                            GeometryReader { geo in
-                                                let barColor = group.rootColor ?? AppTheme.Colors.income
-                                                ZStack(alignment: .leading) {
-                                                    RoundedRectangle(cornerRadius: 3)
-                                                        .fill(barColor.opacity(0.12))
-                                                        .frame(height: 6)
-                                                    RoundedRectangle(cornerRadius: 3)
-                                                        .fill(barColor)
-                                                        .frame(width: geo.size.width * CGFloat(group.total / maxAmount), height: 6)
-                                                }
-                                            }
-                                            .frame(height: 6)
-                                        }
-                                    }
-                                    .padding(.horizontal, 16)
-                                    .padding(.top, 12)
-                                    .padding(.bottom, group.children.isEmpty ? 12 : 6)
-
-                                    if !group.children.isEmpty {
-                                        ForEach(group.children, id: \.name) { child in
-                                            HStack(spacing: 12) {
-                                                Color.clear.frame(width: 18)
-                                                HStack {
-                                                    Text(child.name)
-                                                        .font(.caption)
-                                                        .foregroundStyle(.secondary)
-                                                    Spacer()
-                                                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                                                        Text(child.amount, format: .number.precision(.fractionLength(0...2)))
-                                                            .font(.caption.bold())
-                                                            .foregroundStyle(.secondary)
-                                                        Text("₽")
-                                                            .font(.caption2.bold())
-                                                            .foregroundStyle(.tertiary)
-                                                    }
-                                                }
-                                            }
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 4)
-                                        }
-                                        .padding(.bottom, 8)
-                                    }
-
-                                    if index < incomeByCategoryGroup.count - 1 {
-                                        Divider().padding(.leading, 46)
-                                    }
-                                }
-                            }
-                            .padding(.bottom, 8)
-                        }
-                        .cardStyle()
-                        .padding(.horizontal)
-                    }
-
-                    if expenseByCategoryGroup.isEmpty && incomeByCategoryGroup.isEmpty {
-                        VStack(spacing: 12) {
-                            Image(systemName: "chart.pie")
-                                .font(.system(size: 52))
-                                .foregroundStyle(.quaternary)
-                            Text("Нет данных за этот месяц")
-                                .font(.headline)
-                                .foregroundStyle(.secondary)
-                            Text("Добавьте операции чтобы увидеть аналитику")
-                                .font(.subheadline)
-                                .foregroundStyle(.tertiary)
-                                .multilineTextAlignment(.center)
-                        }
-                        .padding(.top, 40)
-                        .padding(.horizontal, 40)
                     }
                 }
                 .padding(.top, 8)
@@ -554,8 +386,25 @@ struct AnalyticsView: View {
             .refreshable {
                 let bm = SharedBudgetManager.shared
                 guard bm.isParticipant || bm.shareURL != nil else { return }
-                await CloudKitAutoSyncManager.shared.syncNowAsync()
+                autoSync.syncNow()
             }
+            .overlay(alignment: .top) {
+                if autoSync.isSyncing {
+                    HStack(spacing: 6) {
+                        ProgressView().scaleEffect(0.75)
+                        Text("Синхронизация…")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: autoSync.isSyncing)
             .background(AppTheme.Colors.pageBackground)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
@@ -563,5 +412,116 @@ struct AnalyticsView: View {
             .padding(.top, 8)
         }
     }
-}
 
+    // MARK: - Сводка месяца
+
+    @ViewBuilder
+    private var monthlySummaryCards: some View {
+        let incomeEntry  = monthlyIncomeByCurrency.first
+        let expenseEntry = monthlyExpenseByCurrency.first
+        let code         = currencyCodeForAnalytics
+        let symbol       = CurrencyInfo.symbol(for: code, custom: allCurrencies)
+
+        let incomeAmount  = incomeEntry.map  { Double(truncating: NSDecimalNumber(decimal: $0.amount)) } ?? 0
+        let expenseAmount = expenseEntry.map { Double(truncating: NSDecimalNumber(decimal: $0.amount)) } ?? 0
+        let flowAmount    = incomeAmount - expenseAmount
+        let flowColor: Color = flowAmount >= 0 ? AppTheme.Colors.income : AppTheme.Colors.expense
+
+        HStack(spacing: 10) {
+            summaryCard(
+                label: "Доходы",
+                amount: incomeAmount,
+                symbol: symbol,
+                color: AppTheme.Colors.income
+            )
+            summaryCard(
+                label: "Расходы",
+                amount: expenseAmount,
+                symbol: symbol,
+                color: AppTheme.Colors.expense
+            )
+            summaryCard(
+                label: "Поток",
+                amount: flowAmount,
+                symbol: symbol,
+                color: flowColor,
+                showSign: true
+            )
+        }
+        .padding(.horizontal)
+    }
+
+    @ViewBuilder
+    private func summaryCard(
+        label: String,
+        amount: Double,
+        symbol: String,
+        color: Color,
+        showSign: Bool = false
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                if showSign && amount != 0 {
+                    Text(amount > 0 ? "+" : "")
+                        .font(.callout.bold())
+                        .foregroundStyle(color)
+                }
+                Text(abs(amount), format: .number.precision(.fractionLength(0...2)))
+                    .font(.callout.bold())
+                    .foregroundStyle(color)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                Text(symbol)
+                    .font(.caption.bold())
+                    .foregroundStyle(color.opacity(0.8))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle()
+    }
+
+    // MARK: - Бар-чарт по дням
+
+    @ViewBuilder
+    private var dailyChartCard: some View {
+        if !dailyChartData.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("По дням")
+                    .font(.headline)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, 0)
+
+                Chart(dailyChartData) { item in
+                    BarMark(
+                        x: .value("День", item.date, unit: .day),
+                        y: .value("Сумма", item.amount)
+                    )
+                    .foregroundStyle(by: .value("Тип", item.kind))
+                    .cornerRadius(4)
+                }
+                .chartForegroundStyleScale([
+                    incomeChartLabel:  AppTheme.Colors.income,
+                    expenseChartLabel: AppTheme.Colors.expense
+                ])
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 6)) {
+                        AxisValueLabel(format: .dateTime.day())
+                        AxisGridLine()
+                    }
+                }
+                .chartLegend(position: .top, alignment: .leading)
+                .frame(height: 180)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+            }
+            .cardStyle()
+            .padding(.horizontal)
+        }
+    }
+}

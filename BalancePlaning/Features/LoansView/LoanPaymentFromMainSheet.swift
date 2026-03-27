@@ -124,6 +124,11 @@ struct LoanPaymentFormView: View {
     @State private var comment: String = ""
     @State private var showAmountError = false
 
+    @State private var useRecurring = false
+    @State private var recurringInterval: RecurringInterval = .monthly
+    @State private var recurringIntervalDays: Int = 7
+    @State private var recurringEndDate: Date = Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date()
+
     private var service: LoanService { LoanService(context: context) }
 
     private var userAccounts: [Account] {
@@ -183,6 +188,70 @@ struct LoanPaymentFormView: View {
                 .cardStyle()
                 .padding(.horizontal)
 
+                // Блок повторения (только для досрочных погашений)
+                if isPrepayment {
+                    VStack(spacing: 0) {
+                        Toggle(isOn: $useRecurring.animation()) {
+                            HStack(spacing: 10) {
+                                Image(systemName: "repeat.circle.fill")
+                                    .foregroundStyle(Color(hex: "E74C3C"))
+                                    .frame(width: 20)
+                                Text("Повторять")
+                            }
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 14)
+
+                        if useRecurring {
+                            Divider().padding(.leading, 16)
+                            HStack(spacing: 12) {
+                                Image(systemName: "calendar.badge.clock")
+                                    .foregroundStyle(Color(hex: "E74C3C"))
+                                    .frame(width: 20)
+                                Text("Период")
+                                Spacer()
+                                Picker("", selection: $recurringInterval) {
+                                    Text("Ежемесячно").tag(RecurringInterval.monthly)
+                                    Text("Каждые 2 нед.").tag(RecurringInterval.biweekly)
+                                    Text("Еженедельно").tag(RecurringInterval.weekly)
+                                    Text("Ежедневно").tag(RecurringInterval.daily)
+                                    Text("Каждые N дней").tag(RecurringInterval.everyNDays)
+                                }
+                                .labelsHidden()
+                                .tint(Color(hex: "E74C3C"))
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 10)
+
+                            if recurringInterval == .everyNDays {
+                                Divider().padding(.leading, 44)
+                                HStack(spacing: 12) {
+                                    Spacer().frame(width: 32)
+                                    Text("Каждые").foregroundStyle(.secondary)
+                                    Spacer()
+                                    Stepper("\(recurringIntervalDays) дн.", value: $recurringIntervalDays, in: 1...365)
+                                        .fixedSize()
+                                }
+                                .padding(.horizontal, 16).padding(.vertical, 10)
+                            }
+
+                            Divider().padding(.leading, 16)
+                            HStack(spacing: 12) {
+                                Image(systemName: "calendar.badge.checkmark")
+                                    .foregroundStyle(Color(hex: "E74C3C"))
+                                    .frame(width: 20)
+                                Text("До даты")
+                                Spacer()
+                                DatePicker("", selection: $recurringEndDate,
+                                           in: paymentDate...,
+                                           displayedComponents: [.date])
+                                    .labelsHidden()
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 10)
+                        }
+                    }
+                    .cardStyle()
+                    .padding(.horizontal)
+                }
+
                 // Сумма и дата
                 VStack(spacing: 0) {
                     HStack(spacing: 12) {
@@ -214,7 +283,7 @@ struct LoanPaymentFormView: View {
                         Image(systemName: "calendar")
                             .foregroundStyle(Color(hex: "E74C3C"))
                             .frame(width: 20)
-                        Text("Дата")
+                        Text(useRecurring && isPrepayment ? "Начальная дата" : "Дата")
                         Spacer()
                         DatePicker("", selection: $paymentDate, displayedComponents: [.date])
                             .labelsHidden()
@@ -364,16 +433,31 @@ struct LoanPaymentFormView: View {
         }
         guard finalAmount > 0 else { showAmountError = true; return }
 
-        service.addPayment(
-            to: loan,
-            date: paymentDate,
-            amount: finalAmount,
-            isPrepayment: isPrepayment,
-            prepaymentType: isPrepayment ? prepaymentType : nil,
-            fromAccount: selectedAccount,
-            allPayments: Array(allPayments),
-            comment: comment
-        )
+        if isPrepayment && useRecurring {
+            service.addRecurringPrepayments(
+                to: loan,
+                startDate: paymentDate,
+                endDate: recurringEndDate,
+                amount: finalAmount,
+                prepaymentType: prepaymentType,
+                fromAccount: selectedAccount,
+                interval: recurringInterval,
+                intervalDays: recurringIntervalDays,
+                allPayments: Array(allPayments),
+                comment: comment
+            )
+        } else {
+            service.addPayment(
+                to: loan,
+                date: paymentDate,
+                amount: finalAmount,
+                isPrepayment: isPrepayment,
+                prepaymentType: isPrepayment ? prepaymentType : nil,
+                fromAccount: selectedAccount,
+                allPayments: Array(allPayments),
+                comment: comment
+            )
+        }
         onSaved()
     }
 }
@@ -388,12 +472,14 @@ struct EditLoanPaymentSheet: View {
 
     @Query private var allPayments: [LoanPayment]
     @Query private var allAccounts: [Account]
+    @Query private var allLoans: [Loan]
 
     @State private var amountStr: String
     @State private var paymentDate: Date
     @State private var selectedAccountId: UUID?
     @State private var comment: String
     @State private var showAmountError = false
+    @State private var showCancelSeriesAlert = false
 
     init(transaction: Transaction) {
         self.transaction = transaction
@@ -424,6 +510,15 @@ struct EditLoanPaymentSheet: View {
             $0.loanId == loanId &&
             Calendar.current.isDate($0.date, inSameDayAs: transaction.date)
         }
+    }
+
+    private var linkedLoan: Loan? {
+        guard let loanId = transaction.loanId else { return nil }
+        return allLoans.first { $0.id == loanId }
+    }
+
+    private var isPartOfSeries: Bool {
+        linkedPayment?.recurringGroupId != nil
     }
 
     var body: some View {
@@ -500,6 +595,21 @@ struct EditLoanPaymentSheet: View {
                     }
                     .cardStyle()
                     .padding(.horizontal)
+
+                    // Кнопка отмены серии (только для повторяющихся досрочных погашений)
+                    if isPartOfSeries {
+                        Button(role: .destructive) {
+                            showCancelSeriesAlert = true
+                        } label: {
+                            Label("Отменить эту и последующие", systemImage: "xmark.circle")
+                                .font(.subheadline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color(.systemRed).opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: AppTheme.buttonRadius))
+                        }
+                        .padding(.horizontal)
+                    }
                 }
                 .padding(.top, 16)
                 .padding(.bottom, 32)
@@ -517,6 +627,14 @@ struct EditLoanPaymentSheet: View {
                         .fontWeight(.semibold)
                         .foregroundStyle(Color(hex: "E74C3C"))
                 }
+            }
+            .alert("Отменить серию?", isPresented: $showCancelSeriesAlert) {
+                Button("Удалить эту и последующие", role: .destructive) {
+                    cancelSeries()
+                }
+                Button("Отмена", role: .cancel) {}
+            } message: {
+                Text("Этот и все последующие запланированные платежи серии будут удалены")
             }
         }
     }
@@ -536,6 +654,20 @@ struct EditLoanPaymentSheet: View {
         transaction.date = paymentDate
         transaction.comment = comment
         try? context.save()
+        dismiss()
+    }
+
+    private func cancelSeries() {
+        guard let payment = linkedPayment,
+              let groupId = payment.recurringGroupId,
+              let loan = linkedLoan else { dismiss(); return }
+        let loanPayments = allPayments.filter { $0.loanId == loan.id }
+        LoanService(context: context).deleteRecurringPrepayments(
+            groupId: groupId,
+            from: payment.date,
+            loan: loan,
+            allPayments: loanPayments
+        )
         dismiss()
     }
 }

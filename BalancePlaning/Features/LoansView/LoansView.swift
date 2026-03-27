@@ -12,6 +12,7 @@ struct LoansView: View {
     @Query private var allPayments: [LoanPayment]
     @Query private var allAccounts: [Account]
 
+    @EnvironmentObject private var autoSync: CloudKitAutoSyncManager
     @Binding var showAddLoan: Bool
     @State private var showArchived = false
 
@@ -110,6 +111,8 @@ struct LoansView: View {
                                 }
                             }
                         }
+
+                        loanDisclaimerBanner
                     }
                 }
                 .padding(.top, 8)
@@ -118,8 +121,25 @@ struct LoansView: View {
             .refreshable {
                 let bm = SharedBudgetManager.shared
                 guard bm.isParticipant || bm.shareURL != nil else { return }
-                await CloudKitAutoSyncManager.shared.syncNowAsync()
+                autoSync.syncNow()
             }
+            .overlay(alignment: .top) {
+                if autoSync.isSyncing {
+                    HStack(spacing: 6) {
+                        ProgressView().scaleEffect(0.75)
+                        Text("Синхронизация…")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: autoSync.isSyncing)
             .background(AppTheme.Colors.pageBackground)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
@@ -184,6 +204,24 @@ struct LoansView: View {
         .shadow(color: Color(hex: "C0392B").opacity(0.4), radius: 10, x: 0, y: 5)
     }
 
+    private var loanDisclaimerBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "info.circle")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.top, 1)
+            Text("Расчёты в приложении максимально близки к банковским, но могут незначительно отличаться — каждый банк применяет собственную методологию начисления процентов.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal)
+    }
+
     private var emptyState: some View {
         VStack(spacing: 14) {
             Image(systemName: "creditcard.and.123")
@@ -218,12 +256,16 @@ private struct LoanCard: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: loan.isArchived ? "checkmark.circle.fill" : "creditcard.fill")
-                    .font(.title3)
-                    .foregroundStyle(loan.isArchived ? AppTheme.Colors.income : Color(hex: "E74C3C"))
-                    .frame(width: 44, height: 44)
-                    .background((loan.isArchived ? AppTheme.Colors.income : Color(hex: "E74C3C")).opacity(0.12))
-                    .clipShape(Circle())
+                if loan.isArchived {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(AppTheme.Colors.income)
+                        .frame(width: 44, height: 44)
+                        .background(AppTheme.Colors.income.opacity(0.12))
+                        .clipShape(Circle())
+                } else {
+                    BankIconBadge(iconId: loan.iconId, size: 44)
+                }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(loan.name)

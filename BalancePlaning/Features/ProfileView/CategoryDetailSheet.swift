@@ -22,6 +22,7 @@ struct CategoryDetailSheet: View {
 
     @State private var editName: String
     @State private var selectedParentId: UUID?
+    @State private var selectedIcon: String
     @State private var showNameError = false
     @State private var showDeleteDialog = false
 
@@ -37,9 +38,20 @@ struct CategoryDetailSheet: View {
         self.onDeleted = onDeleted
         _editName = State(initialValue: category.name)
         _selectedParentId = State(initialValue: category.parentId)
+        _selectedIcon = State(initialValue: category.icon)
     }
 
     private var service: CategoryService { CategoryService(context: context) }
+
+    /// Реальный цвет категории: кастомный (или унаследованный от родителя) → иначе стандартный accentColor
+    private var effectiveColor: Color {
+        if !category.color.isEmpty, let c = CategoryColors.resolve(category.color) { return c }
+        if let pid = category.parentId,
+           let parent = allCategories.first(where: { $0.id == pid }),
+           !parent.color.isEmpty,
+           let c = CategoryColors.resolve(parent.color) { return c }
+        return accentColor
+    }
 
     private var children: [Category] {
         allCategories.filter { $0.parentId == category.id }
@@ -83,7 +95,8 @@ struct CategoryDetailSheet: View {
 
     private var hasChanges: Bool {
         editName.trimmingCharacters(in: .whitespaces) != category.name ||
-        selectedParentId != category.parentId
+        selectedParentId != category.parentId ||
+        selectedIcon != category.icon
     }
 
     private var subcategoryCountLabel: String {
@@ -121,7 +134,7 @@ struct CategoryDetailSheet: View {
                 // Иконка
                 Image(systemName: category.icon.isEmpty ? categoryIcon : category.icon)
                     .font(.system(size: 44))
-                    .foregroundStyle(accentColor)
+                    .foregroundStyle(effectiveColor)
                     .padding(.bottom, 8)
 
                 // Путь
@@ -162,7 +175,7 @@ struct CategoryDetailSheet: View {
                         // Название
                         HStack(spacing: 12) {
                             Image(systemName: "pencil")
-                                .foregroundStyle(accentColor)
+                                .foregroundStyle(effectiveColor)
                                 .frame(width: 20)
                             TextField("Название", text: $editName)
                                 .foregroundStyle(showNameError ? .red : .primary)
@@ -192,7 +205,7 @@ struct CategoryDetailSheet: View {
                             } label: {
                                 HStack(spacing: 12) {
                                     Image(systemName: "folder.badge.questionmark")
-                                        .foregroundStyle(accentColor)
+                                        .foregroundStyle(effectiveColor)
                                         .frame(width: 20)
                                     Text("Раздел")
                                         .foregroundStyle(.primary)
@@ -220,26 +233,23 @@ struct CategoryDetailSheet: View {
                                 .padding(.vertical, 14)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(accentColor)
+                        .tint(effectiveColor)
                         .padding(.horizontal)
                         .padding(.bottom, 12)
                     }
                 }
 
-                // Выбор иконки (только для корневых не-дефолтных)
-                if category.isRoot && !category.isDefault {
+                // Выбор иконки (для всех не-дефолтных категорий)
+                if !category.isDefault {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Иконка")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal)
                         IconPickerView(
-                            selectedIcon: Binding(
-                                get: { category.icon },
-                                set: { service.updateIcon(category, icon: $0) }
-                            ),
+                            selectedIcon: $selectedIcon,
                             icons: IconPalette.categoryIcons,
-                            accentColor: CategoryColors.resolve(category.color) ?? accentColor
+                            accentColor: effectiveColor
                         )
                     }
                     .padding(.bottom, 8)
@@ -302,7 +312,7 @@ struct CategoryDetailSheet: View {
                                 .padding(.vertical, 14)
                         }
                         .buttonStyle(.bordered)
-                        .tint(accentColor)
+                        .tint(effectiveColor)
                         .padding(.horizontal)
                     }
 
@@ -364,6 +374,9 @@ struct CategoryDetailSheet: View {
         let trimmed = editName.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { showNameError = true; return }
         service.updateCategory(category, name: trimmed, parentId: selectedParentId)
+        if selectedIcon != category.icon {
+            service.updateIcon(category, icon: selectedIcon)
+        }
     }
 
     private var deleteDialogTitle: String {

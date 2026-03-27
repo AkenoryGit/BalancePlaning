@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var showAddLoan: Bool = false
     @State private var showProfileAdd: Bool = false
     @State private var selectionModel = TransactionSelectionModel()
+    @State private var tabBarVisibility = TabBarVisibilityModel()
 
     var userService: UserService {
         UserService(context: context)
@@ -54,22 +55,27 @@ struct ContentView: View {
                 .toolbar(.hidden, for: .tabBar)
         }
         .environment(selectionModel)
+        .environment(tabBarVisibility)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                if selectionModel.isSelecting {
-                    selectionBarView
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-                MainTabBar(selectedTab: $selectedTab) {
-                    switch selectedTab {
-                    case 2: showAddLoan    = true
-                    case 3: showProfileAdd = true
-                    default: showAddSheet  = true
+            if !tabBarVisibility.isHidden {
+                VStack(spacing: 0) {
+                    if selectionModel.isSelecting {
+                        selectionBarView
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    MainTabBar(selectedTab: $selectedTab) {
+                        switch selectedTab {
+                        case 2: showAddLoan    = true
+                        case 3: showProfileAdd = true
+                        default: showAddSheet  = true
+                        }
                     }
                 }
+                .animation(.spring(duration: 0.3), value: selectionModel.isSelecting)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            .animation(.spring(duration: 0.3), value: selectionModel.isSelecting)
         }
+        .animation(.easeInOut(duration: 0.2), value: tabBarVisibility.isHidden)
         .sheet(isPresented: $showAddSheet) {
             TransactionsCategoryView(isRootPresented: $showAddSheet)
         }
@@ -118,6 +124,7 @@ struct ContentView: View {
 private struct MainTabBar: View {
     @Binding var selectedTab: Int
     let onAdd: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
 
     private let barHeight: CGFloat   = 56
     private let buttonSize: CGFloat  = 64   // чуть крупнее
@@ -145,8 +152,14 @@ private struct MainTabBar: View {
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .fill(.bar)
-                    .shadow(color: AppTheme.Colors.accent.opacity(0.22), radius: 18, x: 0, y: 0)
-                    .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: -2)
+                    .shadow(
+                        color: AppTheme.Colors.accent.opacity(colorScheme == .dark ? 0.55 : 0.22),
+                        radius: colorScheme == .dark ? 28 : 18, x: 0, y: 0
+                    )
+                    .shadow(
+                        color: .black.opacity(colorScheme == .dark ? 0.4 : 0.08),
+                        radius: 8, x: 0, y: -2
+                    )
             }
             .padding(.horizontal, 20)   // отступы слева и справа — не до края
 

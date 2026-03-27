@@ -44,7 +44,7 @@ struct TransactionFilter: Equatable {
             .filter { $0 }.count
     }
 
-    func matches(_ t: Transaction) -> Bool {
+    func matches(_ t: Transaction, loans: [Loan] = []) -> Bool {
         let cal = Calendar.current
         let endBound = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: endDate))!
         guard t.date >= startDate && t.date < endBound else { return false }
@@ -81,9 +81,20 @@ struct TransactionFilter: Equatable {
 
         if !commentSearch.isEmpty {
             let query = commentSearch.lowercased()
-            let inComment = t.comment.lowercased().contains(query)
-            let inNote    = t.note.lowercased().contains(query)
-            guard inComment || inNote else { return false }
+            let inComment      = t.comment.lowercased().contains(query)
+            let inNote         = t.note.lowercased().contains(query)
+            let inFromCategory = t.fromCategory?.name.lowercased().contains(query) ?? false
+            let inToCategory   = t.toCategory?.name.lowercased().contains(query) ?? false
+            let inFromAccount  = t.fromAccount?.name.lowercased().contains(query) ?? false
+            let inToAccount    = t.toAccount?.name.lowercased().contains(query) ?? false
+            let inType         = t.type.displayName.lowercased().contains(query)
+            let inLoanName: Bool = {
+                guard let lid = t.loanId else { return false }
+                return loans.first(where: { $0.id == lid })?.name.lowercased().contains(query) ?? false
+            }()
+            guard inComment || inNote || inFromCategory || inToCategory
+                    || inFromAccount || inToAccount || inType || inLoanName
+            else { return false }
         }
 
         return true
@@ -142,7 +153,7 @@ struct FilterSheet: View {
                     HStack(spacing: 8) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Поиск по комментарию...", text: $draft.commentSearch)
+                        TextField("Категория, счёт, кредит, вид операции...", text: $draft.commentSearch)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
                         if !draft.commentSearch.isEmpty {

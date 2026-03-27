@@ -9,6 +9,7 @@ import SwiftData
 struct ProfileView: View {
     @Environment(\.modelContext) private var context
     @Binding var isLogged: Bool
+    @EnvironmentObject private var autoSync: CloudKitAutoSyncManager
     @ObservedObject private var settings = AppSettings.shared
 
     @Query private var allCurrencies: [Currency]
@@ -214,8 +215,25 @@ struct ProfileView: View {
             .refreshable {
                 let bm = SharedBudgetManager.shared
                 guard bm.isParticipant || bm.shareURL != nil else { return }
-                await CloudKitAutoSyncManager.shared.syncNowAsync()
+                autoSync.syncNow()
             }
+            .overlay(alignment: .top) {
+                if autoSync.isSyncing {
+                    HStack(spacing: 6) {
+                        ProgressView().scaleEffect(0.75)
+                        Text("Синхронизация…")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: autoSync.isSyncing)
             .background(AppTheme.Colors.pageBackground)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)

@@ -19,6 +19,7 @@ struct AccountsView: View {
     @State private var showAddAccount = false
     @State private var showAddGroup = false
     @State private var collapsedGroupIds: Set<UUID> = []
+    @State private var initialCollapseApplied = false
 
     private var accountService: AccountService { AccountService(context: context) }
 
@@ -112,6 +113,11 @@ struct AccountsView: View {
         }
         .sheet(isPresented: $showAddAccount) { AddAccountSheet(groups: userGroups) }
         .sheet(isPresented: $showAddGroup)   { AddGroupSheet() }
+        .onAppear {
+            guard !initialCollapseApplied else { return }
+            initialCollapseApplied = true
+            collapsedGroupIds = Set(userGroups.map { $0.id })
+        }
     }
 }
 

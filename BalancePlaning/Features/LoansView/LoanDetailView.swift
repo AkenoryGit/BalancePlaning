@@ -10,6 +10,7 @@ struct LoanDetailView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Environment(\.locale) private var locale
+    @Environment(TabBarVisibilityModel.self) private var tabBarVisibility
     let loan: Loan
 
     @Query private var allPayments: [LoanPayment]
@@ -85,9 +86,26 @@ struct LoanDetailView: View {
         } message: {
             Text("Удалятся все платежи по этому кредиту")
         }
+        .onAppear {
+            tabBarVisibility.isHidden = true
+            // Если в графике есть незапланированные слоты (нет LoanPayment записи) —
+            // синхронизируем: создаём недостающие записи и обновляем существующие.
+            // Это нужно после изменения логики расчёта (напр. капитализация процентов).
+            guard !loan.isArchived else { return }
+            let hasUnsyncedSlots = schedule.contains { !$0.isPaid && !$0.isPrepayment && $0.linkedPaymentId == nil }
+            if hasUnsyncedSlots {
+                service.syncFutureSchedule(for: loan, allPayments: loanPayments)
+            }
+        }
         .onDisappear {
-            pendingAction?()
+            tabBarVisibility.isHidden = false
+            guard let action = pendingAction else { return }
             pendingAction = nil
+            // Откладываем удаление на следующий цикл event loop.
+            // context.save() внутри deleteLoan триггерит @Query-обновления во всех живых View.
+            // Если удалять синхронно в onDisappear, SwiftUI может обратиться к .type/.priority
+            // уже удалённых Transaction во время diff/re-render → "backing data detached" краш.
+            Task { @MainActor in action() }
         }
     }
 
@@ -95,21 +113,24 @@ struct LoanDetailView: View {
 
     private var headerCard: some View {
         VStack(spacing: 12) {
-            VStack(spacing: 4) {
-                Text("Остаток долга")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.8))
-                HStack(alignment: .firstTextBaseline, spacing: 1) {
-                    Text("−")
-                        .font(.system(size: 32, weight: .bold))
-                    Text(remaining, format: .number.precision(.fractionLength(0...0)))
-                        .font(.system(size: 32, weight: .bold))
-                        .minimumScaleFactor(0.6)
-                        .lineLimit(1)
-                    Text(" \(CurrencyInfo.symbol(for: loan.currency))")
-                        .font(.title2.bold())
+            HStack(spacing: 10) {
+                BankIconBadge(iconId: loan.iconId, size: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Остаток долга")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.8))
+                    HStack(alignment: .firstTextBaseline, spacing: 1) {
+                        Text("−")
+                            .font(.system(size: 32, weight: .bold))
+                        Text(remaining, format: .number.precision(.fractionLength(0...0)))
+                            .font(.system(size: 32, weight: .bold))
+                            .minimumScaleFactor(0.6)
+                            .lineLimit(1)
+                        Text(" \(CurrencyInfo.symbol(for: loan.currency))")
+                            .font(.title2.bold())
+                    }
+                    .foregroundStyle(.white)
                 }
-                .foregroundStyle(.white)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -252,10 +273,12 @@ struct LoanDetailView: View {
     private func uncheckAction(for entry: LoanScheduleEntry) {
         guard let paymentId = entry.linkedPaymentId,
               let payment = allPayments.first(where: { $0.id == paymentId }) else { return }
-        if entry.date <= Date() {
+        if entry.scheduledDate <= Date() {
+            // Плановая дата уже прошла — удаляем платёж совсем
             service.deletePayment(payment, loan: loan, allPayments: loanPayments)
         } else {
-            service.revertPaymentDate(payment, to: entry.date)
+            // Плановая дата ещё не наступила — возвращаем платёж на плановую дату
+            service.revertPaymentDate(payment, to: entry.scheduledDate)
         }
     }
 

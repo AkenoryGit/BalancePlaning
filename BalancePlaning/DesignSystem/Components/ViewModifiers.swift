@@ -9,6 +9,8 @@ import SwiftUI
 
 struct CardModifier: ViewModifier {
     var tint: Color? = nil
+    /// Двухцветный горизонтальный градиент (leading, trailing) — заменяет flat tint
+    var gradientColors: (Color, Color)? = nil
     var trailingRadius: CGFloat = AppTheme.cardRadius
 
     private var shape: UnevenRoundedRectangle {
@@ -25,12 +27,21 @@ struct CardModifier: ViewModifier {
             .background {
                 ZStack {
                     Color(.secondarySystemGroupedBackground)
-                    if let tint { tint.opacity(0.08) }
+                    if let (leading, trailing) = gradientColors {
+                        LinearGradient(
+                            colors: [leading.opacity(0.10), trailing.opacity(0.06)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    } else if let tint {
+                        tint.opacity(0.08)
+                    }
                 }
             }
             .clipShape(shape)
             .overlay {
-                if let tint {
+                // Бордер — только для flat-tint карточек (градиентные выглядят чище без него)
+                if gradientColors == nil, let tint {
                     shape
                         .inset(by: 0.75)
                         .stroke(tint.opacity(0.55), lineWidth: 1.5)
@@ -43,6 +54,11 @@ struct CardModifier: ViewModifier {
 extension View {
     func cardStyle(tint: Color? = nil, trailingRadius: CGFloat = AppTheme.cardRadius) -> some View {
         modifier(CardModifier(tint: tint, trailingRadius: trailingRadius))
+    }
+
+    /// Карточка с горизонтальным градиентом слева направо
+    func cardStyleGradient(leading: Color, trailing: Color, trailingRadius: CGFloat = AppTheme.cardRadius) -> some View {
+        modifier(CardModifier(gradientColors: (leading, trailing), trailingRadius: trailingRadius))
     }
 }
 

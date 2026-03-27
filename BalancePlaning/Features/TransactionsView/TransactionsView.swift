@@ -75,7 +75,7 @@ struct TransactionsView: View {
     }
 
     private var periodTransactions: [Transaction] {
-        userTransactions.filter { filter.matches($0) }
+        userTransactions.filter { filter.matches($0, loans: userLoans) }
     }
 
     private var shownTransactions: [Transaction] {
@@ -311,8 +311,27 @@ struct TransactionsView: View {
             .refreshable {
                 let bm = SharedBudgetManager.shared
                 guard bm.isParticipant || bm.shareURL != nil else { return }
-                await autoSync.syncNowAsync()
+                // Запускаем синк и сразу возвращаем управление — синк идёт в фоне.
+                // Это убирает смещение тапов, которое было когда spinner держался 20-30 сек.
+                autoSync.syncNow()
             }
+            .overlay(alignment: .top) {
+                if autoSync.isSyncing {
+                    HStack(spacing: 6) {
+                        ProgressView().scaleEffect(0.75)
+                        Text("Синхронизация…")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: autoSync.isSyncing)
             .background(AppTheme.Colors.pageBackground)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)

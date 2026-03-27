@@ -124,6 +124,26 @@ struct TransactionCard: View {
         isLoanPayment ? Color(hex: "E74C3C") : transaction.type.color
     }
 
+    // SF Symbol иконки для инлайн-отображения
+    private var categoryIcon: String {
+        let cat: Category?
+        switch transaction.type {
+        case .expense: cat = transaction.toCategory
+        case .income:  cat = transaction.fromCategory
+        default:       return ""
+        }
+        guard let cat else { return "" }
+        let rootId = cat.parentId ?? cat.id
+        let icon = allCategories.first { $0.id == rootId }?.icon ?? ""
+        if !icon.isEmpty { return icon }
+        return transaction.type == .income ? "arrow.down.circle" : "cart"
+    }
+
+    private func accountIcon(for account: Account?) -> String {
+        guard let account else { return "" }
+        return account.icon.isEmpty ? "creditcard" : account.icon
+    }
+
     // Цвет корневой категории транзакции (для подсветки карточки)
     private var categoryTintColor: Color? {
         let cat: Category?
@@ -135,6 +155,35 @@ struct TransactionCard: View {
         guard let cat else { return nil }
         let rootId = cat.parentId ?? cat.id
         return allCategories.first { $0.id == rootId }.flatMap { CategoryColors.resolve($0.color) }
+    }
+
+    // Цвет группы счёта
+    private func groupColor(for account: Account?) -> Color? {
+        guard let gid = account?.groupId else { return nil }
+        return allGroups.first { $0.id == gid }.flatMap { CategoryColors.resolve($0.color) }
+    }
+
+    // Градиент карточки: (leading, trailing)
+    private var cardGradient: (Color, Color) {
+        if isLoanPayment {
+            return (Color(hex: "E74C3C"), Color(hex: "9B2335"))
+        }
+        switch transaction.type {
+        case .income:
+            let leading  = categoryTintColor ?? AppTheme.Colors.income
+            let trailing = groupColor(for: transaction.toAccount) ?? AppTheme.Colors.accent
+            return (leading, trailing)
+        case .expense:
+            let leading  = groupColor(for: transaction.fromAccount) ?? AppTheme.Colors.accent
+            let trailing = categoryTintColor ?? AppTheme.Colors.expense
+            return (leading, trailing)
+        case .transaction:
+            let leading  = groupColor(for: transaction.fromAccount) ?? AppTheme.Colors.transfer
+            let trailing = groupColor(for: transaction.toAccount) ?? AppTheme.Colors.transfer
+            return (leading, trailing)
+        case .correction:
+            return (Color.secondary, Color.secondary)
+        }
     }
 
     var body: some View {
@@ -165,10 +214,18 @@ struct TransactionCard: View {
                         HStack(alignment: .top, spacing: 10) {
                             // Столбец категории
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(title)
-                                    .font(.subheadline.bold())
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
+                                HStack(spacing: 4) {
+                                    let cIcon = categoryIcon
+                                    if !cIcon.isEmpty {
+                                        Image(systemName: cIcon)
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .foregroundStyle(categoryTintColor ?? displayColor)
+                                    }
+                                    Text(title)
+                                        .font(.subheadline.bold())
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                }
                                 if let parent = parentCategoryName {
                                     Text(parent)
                                         .font(.caption)
@@ -186,10 +243,15 @@ struct TransactionCard: View {
                             // Столбец счёта
                             if let account = relevantAccount {
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(account.name)
-                                        .font(.subheadline.bold())
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
+                                    HStack(spacing: 4) {
+                                        Image(systemName: accountIcon(for: account))
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .foregroundStyle(groupColor(for: account) ?? .secondary)
+                                        Text(account.name)
+                                            .font(.subheadline.bold())
+                                            .foregroundStyle(.primary)
+                                            .lineLimit(1)
+                                    }
                                     if let g = groupName(for: account) {
                                         Text(g)
                                             .font(.caption)
@@ -199,8 +261,32 @@ struct TransactionCard: View {
                                 }
                             }
                         }
+                    } else if transaction.type == .transaction {
+                        // Перевод: иконки счётов инлайн
+                        Text(title)
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.primary)
+                        HStack(spacing: 4) {
+                            Image(systemName: accountIcon(for: transaction.fromAccount))
+                                .font(.system(size: 10))
+                                .foregroundStyle(groupColor(for: transaction.fromAccount) ?? .secondary)
+                            Text(accountLabel(transaction.fromAccount))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.tertiary)
+                            Image(systemName: accountIcon(for: transaction.toAccount))
+                                .font(.system(size: 10))
+                                .foregroundStyle(groupColor(for: transaction.toAccount) ?? .secondary)
+                            Text(accountLabel(transaction.toAccount))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     } else {
-                        // Перевод / Корректировка / Платёж по кредиту
+                        // Корректировка / Платёж по кредиту
                         Text(title)
                             .font(.subheadline.bold())
                             .foregroundStyle(.primary)
@@ -276,6 +362,6 @@ struct TransactionCard: View {
             }
             .padding(14)
         }
-        .cardStyle(tint: categoryTintColor, trailingRadius: trailingRadius)
+        .cardStyleGradient(leading: cardGradient.0, trailing: cardGradient.1, trailingRadius: trailingRadius)
     }
 }

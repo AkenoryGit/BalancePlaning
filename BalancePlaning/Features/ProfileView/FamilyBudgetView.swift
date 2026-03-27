@@ -65,6 +65,12 @@ struct FamilyBudgetView: View {
         } message: {
             Text("Пока вы подключены к общему бюджету, ваши личные записи будут скрыты (не удалены). Они вернутся, как только вы выйдете из общего бюджета.")
         }
+        // Авто-выход: владелец остановил шару, авто-синк это обнаружил
+        .onChange(of: autoSync.sharingWasStopped) { _, stopped in
+            guard stopped else { return }
+            autoSync.sharingWasStopped = false
+            leaveBudget()
+        }
         // Принять приглашение из URL (когда приложение открыто через ссылку)
         .onReceive(NotificationCenter.default.publisher(for: .cloudKitShareInvitationReceived)) { note in
             guard !budgetManager.isParticipant,
@@ -252,7 +258,7 @@ struct FamilyBudgetView: View {
             Button("Прекратить", role: .destructive) { stopSharing() }
             Button("Отмена", role: .cancel) {}
         } message: {
-            Text("Партнёр потеряет доступ к бюджету")
+            Text("Все участники потеряют доступ к совместному бюджету и все его данные удалятся с их устройств. Ваши данные останутся.")
         }
     }
 
@@ -334,7 +340,7 @@ struct FamilyBudgetView: View {
             Button("Выйти", role: .destructive) { leaveBudget() }
             Button("Отмена", role: .cancel) {}
         } message: {
-            Text("Данные общего бюджета удалятся с устройства. Ваши личные записи снова станут видны.")
+            Text("Все данные совместного бюджета удалятся с вашего устройства. Ваши личные записи снова станут видны. У остальных участников ничего не изменится.")
         }
     }
 
@@ -424,6 +430,9 @@ struct FamilyBudgetView: View {
         Task {
             do {
                 try await syncService.participantFullSync()
+            } catch CloudKitError.sharingWasStopped, CloudKitError.zoneNotFound {
+                // Владелец остановил шару — удаляем данные и выходим
+                leaveBudget()
             } catch {
                 errorMessage = error.localizedDescription
             }

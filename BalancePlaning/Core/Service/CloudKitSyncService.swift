@@ -27,7 +27,10 @@ enum CloudKitConfig {
         static let loanPayment   = "BP_LoanPayment"
         static let currency      = "BP_Currency"
         static let deletedRecord = "BP_DeletedRecord"
+        static let shareStopped  = "BP_ShareStopped"
     }
+    /// Фиксированное имя записи-сигнала об остановке шары
+    static let shareStoppedRecordName = "BP_ShareStopped_Signal"
 }
 
 // MARK: - Ошибки
@@ -37,12 +40,14 @@ enum CloudKitError: Error, LocalizedError {
     case notSignedIn
     case zoneNotFound
     case noOwnerFound
+    case sharingWasStopped
     var errorDescription: String? {
         switch self {
-        case .noShareURL:  return "Не удалось получить ссылку приглашения"
-        case .notSignedIn: return "Войдите в iCloud в настройках устройства"
-        case .zoneNotFound: return "Общий бюджет не найден"
-        case .noOwnerFound: return "Не удалось определить владельца бюджета"
+        case .noShareURL:        return "Не удалось получить ссылку приглашения"
+        case .notSignedIn:       return "Войдите в iCloud в настройках устройства"
+        case .zoneNotFound:      return "Общий бюджет не найден"
+        case .noOwnerFound:      return "Не удалось определить владельца бюджета"
+        case .sharingWasStopped: return "sharingWasStopped"
         }
     }
 }
@@ -94,6 +99,8 @@ struct CloudKitSyncService {
         }
 
         // 3. Загружаем локальные данные в созданную зону
+        // Сбрасываем токен — следующий синк должен прочитать всё с нуля
+        Self.clearChangeToken(for: zoneID)
         try await pushAllLocalData(to: zoneID, db: privateDB)
 
         return url
@@ -136,7 +143,8 @@ struct CloudKitSyncService {
             ownerName = "Совместный бюджет"
         }
 
-        // 5. Засеиваем локальный SwiftData данными из шары
+        // 5. Засеиваем локальный SwiftData данными из шары (первый раз — полный фетч)
+        Self.clearChangeToken(for: zone.zoneID)
         let ownerId = try await seedLocalData(from: zone.zoneID, in: sharedDB)
 
         return (ownerId, ownerName)
@@ -224,7 +232,16 @@ struct CloudKitSyncService {
     // MARK: - Остановить общий доступ (владелец)
 
     func stopSharing() async throws {
-        let zoneID  = CloudKitConfig.ownerZoneID
+        let zoneID = CloudKitConfig.ownerZoneID
+        // Пишем сигнал об остановке ДО удаления шары.
+        // Участники, успевшие синхронизироваться пока шара ещё жива,
+        // увидят запись и автоматически выйдут из общего бюджета.
+        let stopRecord = CKRecord(
+            recordType: CloudKitConfig.RecordType.shareStopped,
+            recordID: CKRecord.ID(recordName: CloudKitConfig.shareStoppedRecordName, zoneID: zoneID)
+        )
+        _ = try? await privateDB.save(stopRecord)
+        // Удаляем CKShare — после этого участники теряют доступ к зоне
         let shareID = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: zoneID)
         try await privateDB.deleteRecord(withID: shareID)
     }
@@ -237,10 +254,42 @@ struct CloudKitSyncService {
         try await pushRecordsForUserId(userId, to: zoneID, db: db)
     }
 
-    /// Push для участника: использует userId ВЛАДЕЛЬЦА → shared database.
+    /// Push для участника: отправляет только Transaction, LoanPayment и DeletedRecord,
+    /// используя userId ВЛАДЕЛЬЦА → shared database.
+    /// Категории, счета, группы, займы и валюты НЕ пушатся — они принадлежат владельцу
+    /// и участник не должен перезаписывать их своей (возможно устаревшей) локальной копией.
     private func pushParticipantData(to zoneID: CKRecordZone.ID) async throws {
         guard let ownerId = SharedBudgetManager.shared.activeBudgetOwnerId else { return }
-        try await pushRecordsForUserId(ownerId, to: zoneID, db: sharedDB)
+
+        var records: [CKRecord] = []
+
+        if let arr = try? context.fetch(FetchDescriptor<Transaction>()) {
+            records += arr.filter { $0.userId == ownerId }.map { $0.toCKRecord(zoneID: zoneID) }
+        }
+        if let arr = try? context.fetch(FetchDescriptor<LoanPayment>()) {
+            records += arr.filter { $0.userId == ownerId }.map { $0.toCKRecord(zoneID: zoneID) }
+        }
+        if let arr = try? context.fetch(FetchDescriptor<DeletedRecord>()) {
+            records += arr.filter { $0.userId == ownerId }.map { $0.toCKRecord(zoneID: zoneID) }
+        }
+
+        // Не пушим записи, помеченные локальными tombstone'ами
+        let localTombstoneAll = (try? context.fetch(FetchDescriptor<DeletedRecord>())) ?? []
+        let localTombstonedIds = Set(localTombstoneAll.filter { $0.userId == ownerId }.map { $0.deletedId })
+        if !localTombstonedIds.isEmpty {
+            records = records.filter { r in
+                guard r.recordType != CloudKitConfig.RecordType.deletedRecord,
+                      let idStr = r["id"] as? String, let id = UUID(uuidString: idStr)
+                else { return true }
+                return !localTombstonedIds.contains(id)
+            }
+        }
+
+        // Дедупликация tombstone'ов
+        var seenNames = Set<String>()
+        records = records.filter { seenNames.insert($0.recordID.recordName).inserted }
+
+        if !records.isEmpty { try await batchSave(records, to: sharedDB) }
     }
 
     private func pushRecordsForUserId(_ userId: UUID, to zoneID: CKRecordZone.ID, db: CKDatabase) async throws {
@@ -272,22 +321,17 @@ struct CloudKitSyncService {
             records += arr.filter { $0.userId == userId }.map { $0.toCKRecord(zoneID: zoneID) }
         }
 
-        let cloudRecords = try await fetchAllRecords(from: zoneID, in: db)
-
-        // Tombstone'ы из CloudKit: другие устройства могли удалить записи до нас.
-        // Фильтруем — не пушим то, что уже помечено к удалению в CloudKit.
-        let cloudTombstonedIds = Set(
-            cloudRecords
-                .filter { $0.recordType == CloudKitConfig.RecordType.deletedRecord }
-                .compactMap { $0["deletedId"] as? String }
-                .compactMap { UUID(uuidString: $0) }
-        )
-        if !cloudTombstonedIds.isEmpty {
+        // Фильтруем локальные tombstone'ы: не пушим записи, которые уже удалены.
+        // Облачные tombstone'ы появятся при следующем pull через seedLocalData —
+        // это безопаснее и быстрее, чем делать полный fetchAllRecords только ради проверки.
+        let localTombstoneAll = (try? context.fetch(FetchDescriptor<DeletedRecord>())) ?? []
+        let localTombstonedIds = Set(localTombstoneAll.filter { $0.userId == userId }.map { $0.deletedId })
+        if !localTombstonedIds.isEmpty {
             records = records.filter { r in
                 guard r.recordType != CloudKitConfig.RecordType.deletedRecord,
                       let idStr = r["id"] as? String, let id = UUID(uuidString: idStr)
                 else { return true }
-                return !cloudTombstonedIds.contains(id)
+                return !localTombstonedIds.contains(id)
             }
         }
 
@@ -301,6 +345,12 @@ struct CloudKitSyncService {
     @discardableResult
     private func seedLocalData(from zoneID: CKRecordZone.ID, in db: CKDatabase) async throws -> UUID {
         let records = try await fetchAllRecords(from: zoneID, in: db)
+
+        // Если владелец остановил шару, он записал сигнал BP_ShareStopped в зону.
+        // Участник видит его и должен автоматически выйти из общего бюджета.
+        if records.contains(where: { $0.recordType == CloudKitConfig.RecordType.shareStopped }) {
+            throw CloudKitError.sharingWasStopped
+        }
 
         let ownerIdStr = records.compactMap { $0["userId"] as? String }.first
         guard let str = ownerIdStr, let ownerId = UUID(uuidString: str) else {
@@ -468,15 +518,45 @@ struct CloudKitSyncService {
         // Промежуточный save вызывал "backing data detached" краш в @Query-вьюхах.
     }
 
+    // MARK: - Delta sync: serverChangeToken storage
+
+    private static func changeTokenKey(for zoneID: CKRecordZone.ID) -> String {
+        "ckToken_\(zoneID.zoneName)_\(zoneID.ownerName)"
+    }
+    private static func savedChangeToken(for zoneID: CKRecordZone.ID) -> CKServerChangeToken? {
+        guard let data = UserDefaults.standard.data(forKey: changeTokenKey(for: zoneID)) else { return nil }
+        return try? NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: data)
+    }
+    private static func saveChangeToken(_ token: CKServerChangeToken, for zoneID: CKRecordZone.ID) {
+        if let data = try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: true) {
+            UserDefaults.standard.set(data, forKey: changeTokenKey(for: zoneID))
+        }
+    }
+    static func clearChangeToken(for zoneID: CKRecordZone.ID) {
+        UserDefaults.standard.removeObject(forKey: changeTokenKey(for: zoneID))
+    }
+
+    /// Дельта-фетч: возвращает только записи, изменённые с момента последней синхронизации.
+    /// При первом запуске (нет токена) или истечении токена — полный фетч.
     private func fetchAllRecords(from zoneID: CKRecordZone.ID, in db: CKDatabase) async throws -> [CKRecord] {
-        // CKFetchRecordZoneChangesOperation не требует queryable-полей в схеме,
-        // в отличие от CKQuery. Получаем все записи зоны за один проход.
+        do {
+            return try await fetchRecords(from: zoneID, in: db,
+                                          token: Self.savedChangeToken(for: zoneID))
+        } catch let ckError as CKError where ckError.code == .changeTokenExpired {
+            // Токен устарел → сбрасываем и делаем полный фетч
+            Self.clearChangeToken(for: zoneID)
+            return try await fetchRecords(from: zoneID, in: db, token: nil)
+        }
+    }
+
+    private func fetchRecords(from zoneID: CKRecordZone.ID, in db: CKDatabase,
+                               token: CKServerChangeToken?) async throws -> [CKRecord] {
         try await withCheckedThrowingContinuation { cont in
             var records: [CKRecord] = []
+            var latestToken: CKServerChangeToken?
 
             let config = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
-            // serverChangeToken = nil → получаем все записи с самого начала
-            config.previousServerChangeToken = nil
+            config.previousServerChangeToken = token
 
             let op = CKFetchRecordZoneChangesOperation(
                 recordZoneIDs: [zoneID],
@@ -486,11 +566,17 @@ struct CloudKitSyncService {
             op.recordWasChangedBlock = { _, result in
                 if case .success(let record) = result { records.append(record) }
             }
-
+            // Сохраняем последний токен, полученный от CloudKit во время стриминга
+            op.recordZoneChangeTokensUpdatedBlock = { _, newToken, _ in
+                if let newToken { latestToken = newToken }
+            }
             op.fetchRecordZoneChangesResultBlock = { result in
                 switch result {
-                case .success: cont.resume(returning: records)
-                case .failure(let error): cont.resume(throwing: error)
+                case .success:
+                    if let t = latestToken { Self.saveChangeToken(t, for: zoneID) }
+                    cont.resume(returning: records)
+                case .failure(let error):
+                    cont.resume(throwing: error)
                 }
             }
 

@@ -151,7 +151,7 @@ struct CategoryRow: View {
 
     var body: some View {
         let iconColor = categoryColor ?? accentColor
-        let displayIcon = (!isChild && !category.icon.isEmpty) ? category.icon : icon
+        let displayIcon = category.icon.isEmpty ? icon : category.icon
         return Button(action: onTap) {
             HStack(spacing: 14) {
                 Image(systemName: displayIcon)

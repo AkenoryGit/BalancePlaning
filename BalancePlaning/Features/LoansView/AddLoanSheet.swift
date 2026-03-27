@@ -11,9 +11,13 @@ import SwiftData
 struct DraftEntry: Identifiable {
     let id = UUID()
     let paymentNumber: Int
-    let date: Date
+    var date: Date
     var amountStr: String
     var isIncluded: Bool = true
+    var isManuallyAdded: Bool = false
+    var isScheduled: Bool = false
+    var isPrepayment: Bool = false
+    var prepaymentType: PrepaymentType? = nil
 
     var amount: Decimal? {
         Decimal(string: amountStr.replacingOccurrences(of: ",", with: "."))
@@ -43,9 +47,13 @@ struct AddLoanSheet: View {
             _startDate    = State(initialValue: l.startDate)
             _paymentDay   = State(initialValue: l.paymentDay)
             _currency     = State(initialValue: l.currency)
+            _iconId       = State(initialValue: l.iconId)
             if let first = l.firstPaymentDate {
                 _useFirstPaymentDate = State(initialValue: true)
                 _firstPaymentDate    = State(initialValue: first)
+            }
+            if let fp = l.firstPaymentAmount {
+                _firstPaymentStr = State(initialValue: NSDecimalNumber(decimal: fp).stringValue)
             }
         }
     }
@@ -59,6 +67,7 @@ struct AddLoanSheet: View {
     @State private var startDate: Date = Date()
     @State private var useFirstPaymentDate: Bool = false
     @State private var firstPaymentDate: Date = Date()
+    @State private var firstPaymentStr: String = ""
     @State private var paymentDay: Int = 15
     @State private var currency: String = "RUB"
 
@@ -67,7 +76,9 @@ struct AddLoanSheet: View {
     @State private var showTermError = false
 
     @State private var showScheduleEditor = false
+    @State private var showIconPicker = false
     @State private var draftEntries: [DraftEntry] = []
+    @State private var iconId: String = ""
 
     private var userCurrencies: [Currency] {
         guard let uid = currentUserId() else { return [] }
@@ -95,6 +106,11 @@ struct AddLoanSheet: View {
         return computedPayment
     }
 
+    private var firstPaymentOverride: Decimal? {
+        guard !firstPaymentStr.isEmpty else { return nil }
+        return Decimal(string: firstPaymentStr.replacingOccurrences(of: ",", with: "."))
+    }
+
     private var paymentDayLabel: String {
         paymentDay == 0 ? AppSettings.shared.bundle.localizedString(forKey: "Последнее число", value: "Последнее число", table: nil) : "\(paymentDay)"
     }
@@ -108,6 +124,24 @@ struct AddLoanSheet: View {
 
                     // MARK: Название
                     VStack(alignment: .leading, spacing: 0) {
+                        // Иконка банка
+                        HStack(spacing: 12) {
+                            BankIconBadge(iconId: iconId, size: 36)
+                            Text("Банк")
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Text(BankIcons.info(for: iconId)?.name ?? "По умолчанию")
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                        .onTapGesture { showIconPicker = true }
+
+                        Divider().padding(.leading, 16)
+
                         HStack(spacing: 12) {
                             Image(systemName: "building.columns")
                                 .foregroundStyle(Color(hex: "E74C3C"))
@@ -128,63 +162,114 @@ struct AddLoanSheet: View {
                     }
                     .cardStyle()
                     .padding(.horizontal)
+                    .sheet(isPresented: $showIconPicker) {
+                        BankIconPickerSheet(selectedId: $iconId)
+                    }
+
+                    // MARK: Дисклеймер (только при создании)
+                    if !isEditing {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundStyle(Color(hex: "E74C3C").opacity(0.7))
+                                .font(.subheadline)
+                                .padding(.top, 1)
+                            Text("Введите параметры из договора. Если первый платёж отличается по сумме или дате — включите «Дата первого платежа» и укажите сумму из банковского графика. Это позволяет рассчитать всё до копейки.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 20)
+                    }
 
                     // MARK: Параметры кредита
-                    VStack(spacing: 0) {
-                        // Сумма
-                        HStack(spacing: 12) {
-                            Image(systemName: "rublesign")
-                                .foregroundStyle(Color(hex: "E74C3C"))
-                                .frame(width: 20)
-                            TextField("Сумма кредита", text: $amountStr)
+                    if isEditing, let loan {
+                        // Режим редактирования: сумма, ставка, срок, валюта и дата выдачи — read-only
+                        VStack(spacing: 0) {
+                            editInfoRow(icon: "rublesign", label: "Сумма кредита",
+                                        value: "\(NSDecimalNumber(decimal: loan.originalAmount).intValue) \(CurrencyInfo.symbol(for: loan.currency))")
+                            Divider().padding(.leading, 16)
+                            editInfoRow(icon: "percent", label: "Ставка",
+                                        value: "\(NSDecimalNumber(decimal: loan.interestRate).doubleValue.formatted(.number.precision(.fractionLength(0...2))))% годовых")
+                            Divider().padding(.leading, 16)
+                            editInfoRow(icon: "calendar.badge.clock", label: "Срок",
+                                        value: "\(loan.termMonths) мес.")
+                            Divider().padding(.leading, 16)
+                            // Ежемесячный платёж — редактируемый
+                            HStack(spacing: 12) {
+                                Image(systemName: "banknote")
+                                    .foregroundStyle(Color(hex: "E74C3C"))
+                                    .frame(width: 20)
+                                TextField(
+                                    "Ежемесячный платёж (\(NSDecimalNumber(decimal: loan.monthlyPayment).intValue) \(CurrencyInfo.symbol(for: loan.currency)))",
+                                    text: $paymentStr
+                                )
                                 .keyboardType(.decimalPad)
-                                .foregroundStyle(showAmountError ? .red : .primary)
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 14)
                         }
-                        .padding(.horizontal, 16).padding(.vertical, 14)
+                        .cardStyle()
+                        .padding(.horizontal)
 
-                        Divider().padding(.leading, 16)
+                        Text("Сумма, ставка и срок зафиксированы — их изменение сломало бы расчёт уже совершённых платежей.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 20)
+                    } else {
+                        VStack(spacing: 0) {
+                            // Сумма
+                            HStack(spacing: 12) {
+                                Image(systemName: "rublesign")
+                                    .foregroundStyle(Color(hex: "E74C3C"))
+                                    .frame(width: 20)
+                                TextField("Сумма кредита", text: $amountStr)
+                                    .keyboardType(.decimalPad)
+                                    .foregroundStyle(showAmountError ? .red : .primary)
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 14)
 
-                        // Ставка
-                        HStack(spacing: 12) {
-                            Image(systemName: "percent")
-                                .foregroundStyle(Color(hex: "E74C3C"))
-                                .frame(width: 20)
-                            TextField("Процентная ставка (% годовых)", text: $rateStr)
+                            Divider().padding(.leading, 16)
+
+                            // Ставка
+                            HStack(spacing: 12) {
+                                Image(systemName: "percent")
+                                    .foregroundStyle(Color(hex: "E74C3C"))
+                                    .frame(width: 20)
+                                TextField("Процентная ставка (% годовых)", text: $rateStr)
+                                    .keyboardType(.decimalPad)
+                                    .foregroundStyle(showRateError ? .red : .primary)
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 14)
+
+                            Divider().padding(.leading, 16)
+
+                            // Срок
+                            HStack(spacing: 12) {
+                                Image(systemName: "calendar.badge.clock")
+                                    .foregroundStyle(Color(hex: "E74C3C"))
+                                    .frame(width: 20)
+                                TextField("Срок (в месяцах)", text: $termStr)
+                                    .keyboardType(.numberPad)
+                                    .foregroundStyle(showTermError ? .red : .primary)
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 14)
+
+                            Divider().padding(.leading, 16)
+
+                            // Ежемесячный платёж
+                            HStack(spacing: 12) {
+                                Image(systemName: "banknote")
+                                    .foregroundStyle(Color(hex: "E74C3C"))
+                                    .frame(width: 20)
+                                TextField(
+                                    computedPayment.map { "Авторасчёт: \(NSDecimalNumber(decimal: $0).intValue) ₽" } ?? "Ежемесячный платёж",
+                                    text: $paymentStr
+                                )
                                 .keyboardType(.decimalPad)
-                                .foregroundStyle(showRateError ? .red : .primary)
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 14)
                         }
-                        .padding(.horizontal, 16).padding(.vertical, 14)
-
-                        Divider().padding(.leading, 16)
-
-                        // Срок
-                        HStack(spacing: 12) {
-                            Image(systemName: "calendar.badge.clock")
-                                .foregroundStyle(Color(hex: "E74C3C"))
-                                .frame(width: 20)
-                            TextField("Срок (в месяцах)", text: $termStr)
-                                .keyboardType(.numberPad)
-                                .foregroundStyle(showTermError ? .red : .primary)
-                        }
-                        .padding(.horizontal, 16).padding(.vertical, 14)
-
-                        Divider().padding(.leading, 16)
-
-                        // Ежемесячный платёж
-                        HStack(spacing: 12) {
-                            Image(systemName: "banknote")
-                                .foregroundStyle(Color(hex: "E74C3C"))
-                                .frame(width: 20)
-                            TextField(
-                                computedPayment.map { "Авторасчёт: \(NSDecimalNumber(decimal: $0).intValue) ₽" } ?? "Ежемесячный платёж",
-                                text: $paymentStr
-                            )
-                            .keyboardType(.decimalPad)
-                        }
-                        .padding(.horizontal, 16).padding(.vertical, 14)
+                        .cardStyle()
+                        .padding(.horizontal)
                     }
-                    .cardStyle()
-                    .padding(.horizontal)
 
                     // MARK: Даты и расписание
                     VStack(spacing: 0) {
@@ -199,6 +284,11 @@ struct AddLoanSheet: View {
                                 .labelsHidden()
                         }
                         .padding(.horizontal, 16).padding(.vertical, 10)
+                        .onChange(of: startDate) { _, newStart in
+                            if useFirstPaymentDate && firstPaymentDate < newStart {
+                                firstPaymentDate = newStart
+                            }
+                        }
 
                         Divider().padding(.leading, 16)
 
@@ -222,8 +312,25 @@ struct AddLoanSheet: View {
                                 Text("Дата")
                                     .foregroundStyle(.secondary)
                                 Spacer()
-                                DatePicker("", selection: $firstPaymentDate, displayedComponents: [.date])
+                                DatePicker("", selection: $firstPaymentDate,
+                                           in: startDate...,
+                                           displayedComponents: [.date])
                                     .labelsHidden()
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 10)
+
+                            Divider().padding(.leading, 44)
+                            HStack(spacing: 12) {
+                                Spacer().frame(width: 32)
+                                TextField(
+                                    (effectivePayment.map { "Та же: \(NSDecimalNumber(decimal: $0).intValue)" } ?? "Та же, что ежемесячный"),
+                                    text: $firstPaymentStr
+                                )
+                                .keyboardType(.decimalPad)
+                                .foregroundStyle(.secondary)
+                                Text("(1-й платёж)")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
                             }
                             .padding(.horizontal, 16).padding(.vertical, 10)
                         }
@@ -255,30 +362,32 @@ struct AddLoanSheet: View {
                         }
                         .padding(.horizontal, 16).padding(.vertical, 10)
 
-                        Divider().padding(.leading, 16)
+                        if !isEditing {
+                            Divider().padding(.leading, 16)
 
-                        // Валюта
-                        Menu {
-                            ForEach(allCurrencyOptions) { info in
-                                Button { currency = info.code } label: {
-                                    Text("\(info.symbol) \(info.name)")
+                            // Валюта (только при создании)
+                            Menu {
+                                ForEach(allCurrencyOptions) { info in
+                                    Button { currency = info.code } label: {
+                                        Text("\(info.symbol) \(info.name)")
+                                    }
                                 }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "dollarsign.circle")
+                                        .foregroundStyle(Color(hex: "E74C3C"))
+                                        .frame(width: 20)
+                                    Text("Валюта")
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    Text(selectedCurrencyLabel)
+                                        .foregroundStyle(.secondary)
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.horizontal, 16).padding(.vertical, 14)
                             }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "dollarsign.circle")
-                                    .foregroundStyle(Color(hex: "E74C3C"))
-                                    .frame(width: 20)
-                                Text("Валюта")
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                Text(selectedCurrencyLabel)
-                                    .foregroundStyle(.secondary)
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 16).padding(.vertical, 14)
                         }
                     }
                     .cardStyle()
@@ -289,6 +398,20 @@ struct AddLoanSheet: View {
                             .font(.caption)
                             .foregroundStyle(.red)
                             .padding(.horizontal)
+                    }
+
+                    // MARK: Кнопка редактирования графика (только при редактировании)
+                    if isEditing {
+                        Button {
+                            loadScheduleForEdit()
+                        } label: {
+                            Label("Редактировать будущие платежи", systemImage: "calendar.badge.clock")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(Color(hex: "E74C3C"))
+                        .padding(.horizontal)
                     }
                 }
                 .padding(.top, 16)
@@ -317,14 +440,35 @@ struct AddLoanSheet: View {
             .navigationDestination(isPresented: $showScheduleEditor) {
                 LoanScheduleEditorView(
                     entries: $draftEntries,
-                    currency: currency,
+                    currency: isEditing ? (loan?.currency ?? currency) : currency,
+                    isEditing: isEditing,
                     onSave: {
-                        saveCreate()
+                        if isEditing {
+                            saveEditSchedule()
+                        } else {
+                            saveCreate()
+                        }
                         dismiss()
                     }
                 )
             }
         }
+    }
+
+    // MARK: - Helpers
+
+    private func editInfoRow(icon: String, label: String, value: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundStyle(Color(hex: "E74C3C").opacity(0.5))
+                .frame(width: 20)
+            Text(label)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 14)
     }
 
     // MARK: - Actions
@@ -344,6 +488,7 @@ struct AddLoanSheet: View {
                             startDate: startDate, paymentDay: paymentDay,
                             monthlyPayment: payment, currency: currency,
                             firstPaymentDate: firstDate)
+        tempLoan.firstPaymentAmount = useFirstPaymentDate ? firstPaymentOverride : nil
         let svc = LoanService(context: context)
         let schedule = svc.generateSchedule(for: tempLoan, payments: [])
         draftEntries = schedule.filter { !$0.isPrepayment }.map { entry in
@@ -363,18 +508,23 @@ struct AddLoanSheet: View {
         guard !trimmedName.isEmpty else { return }
         let firstDate: Date? = useFirstPaymentDate ? firstPaymentDate : nil
         let paymentOverride: Decimal? = paymentStr.isEmpty ? nil : effectivePayment
-        let entries = draftEntries.filter { $0.isIncluded }.compactMap { e -> (date: Date, amount: Decimal)? in
+        let entries = draftEntries.filter { $0.isIncluded }.compactMap {
+            e -> (date: Date, amount: Decimal, isPrepayment: Bool, prepaymentType: PrepaymentType?)? in
             guard let amt = e.amount, amt > 0 else { return nil }
-            return (date: e.date, amount: amt)
+            return (date: e.date, amount: amt,
+                    isPrepayment: e.isPrepayment,
+                    prepaymentType: e.isPrepayment ? e.prepaymentType : nil)
         }
         let trimmedBorrower = borrowerName.trimmingCharacters(in: .whitespaces)
         LoanService(context: context).addLoanWithSchedule(
             name: trimmedName, originalAmount: a, interestRate: r,
             termMonths: t, startDate: startDate, paymentDay: paymentDay,
             currency: currency, firstPaymentDate: firstDate,
+            firstPaymentAmount: useFirstPaymentDate ? firstPaymentOverride : nil,
             monthlyPaymentOverride: paymentOverride,
             scheduledEntries: entries,
-            borrowerName: trimmedBorrower.isEmpty ? nil : trimmedBorrower
+            borrowerName: trimmedBorrower.isEmpty ? nil : trimmedBorrower,
+            iconId: iconId
         )
     }
 
@@ -382,19 +532,76 @@ struct AddLoanSheet: View {
         guard let loan else { return }
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         guard !trimmedName.isEmpty else { return }
-        showRateError  = rate == nil || (rate ?? -1) < 0
-        showTermError  = termMonths == nil || (termMonths ?? 0) <= 0
-        guard !showRateError, !showTermError,
-              let r = rate, let t = termMonths else { return }
         let firstDate: Date? = useFirstPaymentDate ? firstPaymentDate : nil
         let paymentOverride: Decimal? = paymentStr.isEmpty ? nil : effectivePayment
         let trimmedBorrower = borrowerName.trimmingCharacters(in: .whitespaces)
-        LoanService(context: context).updateLoan(loan, name: trimmedName, interestRate: r,
-                                                  termMonths: t, paymentDay: paymentDay,
+        // Ставку и срок не меняем — они влияют на весь расчёт графика, включая прошлые платежи
+        LoanService(context: context).updateLoan(loan, name: trimmedName,
+                                                  interestRate: loan.interestRate,
+                                                  termMonths: loan.termMonths,
+                                                  paymentDay: paymentDay,
                                                   firstPaymentDate: firstDate,
+                                                  firstPaymentAmount: useFirstPaymentDate ? firstPaymentOverride : nil,
                                                   monthlyPaymentOverride: paymentOverride,
-                                                  borrowerName: trimmedBorrower.isEmpty ? nil : trimmedBorrower)
+                                                  borrowerName: trimmedBorrower.isEmpty ? nil : trimmedBorrower,
+                                                  iconId: iconId)
         dismiss()
+    }
+
+    private func loadScheduleForEdit() {
+        guard let loan else { return }
+        let allPayments = (try? context.fetch(FetchDescriptor<LoanPayment>())) ?? []
+        let loanPayments = allPayments.filter { $0.loanId == loan.id }
+        let today = Date()
+
+        let futureRegular = loanPayments
+            .filter { !$0.isPrepayment && $0.date > today }
+            .sorted { $0.date < $1.date }
+
+        if futureRegular.isEmpty {
+            // Платежей в БД нет — генерируем из текущего расчёта
+            let svc = LoanService(context: context)
+            let schedule = svc.generateSchedule(for: loan, payments: loanPayments)
+            draftEntries = schedule
+                .filter { !$0.isPaid && !$0.isPrepayment }
+                .enumerated()
+                .map { idx, entry in
+                    DraftEntry(
+                        paymentNumber: idx + 1,
+                        date: entry.date,
+                        amountStr: NSDecimalNumber(decimal: entry.totalAmount).stringValue,
+                        isIncluded: true,
+                        isManuallyAdded: true,
+                        isScheduled: true
+                    )
+                }
+        } else {
+            draftEntries = futureRegular.enumerated().map { idx, p in
+                DraftEntry(
+                    paymentNumber: idx + 1,
+                    date: p.date,
+                    amountStr: NSDecimalNumber(decimal: p.totalAmount).stringValue,
+                    isIncluded: true,
+                    isManuallyAdded: true,
+                    isScheduled: true
+                )
+            }
+        }
+        showScheduleEditor = true
+    }
+
+    private func saveEditSchedule() {
+        guard let loan else { return }
+        let allPayments = (try? context.fetch(FetchDescriptor<LoanPayment>())) ?? []
+        let loanPayments = allPayments.filter { $0.loanId == loan.id }
+        let entries = draftEntries.filter { $0.isIncluded }.compactMap {
+            e -> (date: Date, amount: Decimal, isPrepayment: Bool, prepaymentType: PrepaymentType?)? in
+            guard let amt = e.amount, amt > 0 else { return nil }
+            return (date: e.date, amount: amt,
+                    isPrepayment: e.isPrepayment,
+                    prepaymentType: e.isPrepayment ? e.prepaymentType : nil)
+        }
+        LoanService(context: context).updateSchedule(for: loan, allPayments: loanPayments, newEntries: entries)
     }
 }
 
@@ -403,69 +610,153 @@ struct AddLoanSheet: View {
 struct LoanScheduleEditorView: View {
     @Binding var entries: [DraftEntry]
     let currency: String
+    var isEditing: Bool = false
     let onSave: () -> Void
     @Environment(\.locale) private var locale
+
+    // Дебаунс для сортировки: сортируем только спустя 0.35с после последнего изменения даты
+    @State private var lastDateChangeTime: Date = .distantPast
+    // ID записи, к которой надо прокрутить после сортировки/вставки
+    @State private var scrollToId: UUID? = nil
 
     private var currencySymbol: String { CurrencyInfo.symbol(for: currency) }
     private var includedCount: Int { entries.filter { $0.isIncluded }.count }
     private var pastCount: Int { entries.filter { $0.isIncluded && $0.isPast }.count }
 
     var body: some View {
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Все включённые платежи создадутся как операции.")
+        ScrollViewReader { proxy in
+            List {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(isEditing
+                             ? "Запланированные будущие платежи по кредиту."
+                             : "Предварительный расчёт платежей по кредиту.")
+                            .font(.subheadline.bold())
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label("Переключатель — включить/отключить платёж", systemImage: "togglepower")
+                            Label("Сумма и дата редактируются под условия банка", systemImage: "pencil")
+                            Label("Кнопка «+» внизу — добавить досрочный или доп. платёж", systemImage: "plus.circle")
+                        }
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    if pastCount > 0 {
-                        Label("\(pastCount) прош. платеж\(pastCount == 1 ? "" : "а") — отметятся выполненными", systemImage: "checkmark.circle")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.Colors.income)
+                        if !isEditing && pastCount > 0 {
+                            Label("\(pastCount) прош. платеж\(pastCount == 1 ? "" : "а") — отметятся выполненными", systemImage: "checkmark.circle")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.Colors.income)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                Section("Платежи (\(includedCount) из \(entries.count))") {
+                    // ForEach со стабильными UUID-идентификаторами — строки не прыгают при сортировке
+                    ForEach($entries) { $entry in
+                        let e = $entry.wrappedValue
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 12) {
+                                Circle()
+                                    .fill(dotColor(for: e))
+                                    .frame(width: 8, height: 8)
+                                    .opacity(e.isIncluded ? 1 : 0.25)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    if e.isManuallyAdded {
+                                        DatePicker("", selection: $entry.date, displayedComponents: [.date])
+                                            .labelsHidden()
+                                            .onChange(of: e.date) { _, _ in
+                                                // Сортируем только после закрытия пикера (дебаунс 350ms)
+                                                scheduleSort(for: e.id)
+                                            }
+                                    } else {
+                                        Text(e.date, format: .dateTime.day().month(.wide).year().locale(locale))
+                                            .font(.subheadline)
+                                            .foregroundStyle(e.isIncluded ? .primary : .secondary)
+                                    }
+                                    if e.isPast && e.isIncluded && !e.isPrepayment {
+                                        Text("Выполнен").font(.caption2).foregroundStyle(AppTheme.Colors.income)
+                                    }
+                                    if e.isPrepayment && e.isIncluded {
+                                        Text("Досрочный")
+                                            .font(.caption2.bold())
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 6).padding(.vertical, 2)
+                                            .background(Color(hex: "E74C3C"))
+                                            .clipShape(Capsule())
+                                    }
+                                }
+
+                                Spacer()
+
+                                if e.isIncluded {
+                                    HStack(spacing: 2) {
+                                        TextField("", text: $entry.amountStr)
+                                            .keyboardType(.decimalPad)
+                                            .multilineTextAlignment(.trailing)
+                                            .frame(width: 80)
+                                            .foregroundStyle(.primary)
+                                        Text(currencySymbol).font(.caption.bold()).foregroundStyle(.secondary)
+                                    }
+                                }
+
+                                Toggle("", isOn: $entry.isIncluded).labelsHidden().tint(AppTheme.Colors.accent)
+                            }
+
+                            if e.isManuallyAdded && !e.isScheduled && e.isIncluded {
+                                HStack(spacing: 8) {
+                                    Spacer().frame(width: 16)
+                                    Toggle(isOn: Binding(
+                                        get: { e.isPrepayment },
+                                        set: { on in
+                                            $entry.wrappedValue.isPrepayment = on
+                                            if on && $entry.wrappedValue.prepaymentType == nil {
+                                                $entry.wrappedValue.prepaymentType = .reduceTerm
+                                            } else if !on {
+                                                $entry.wrappedValue.prepaymentType = nil
+                                            }
+                                        }
+                                    )) {
+                                        Text("Досрочный платёж").font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    .tint(Color(hex: "E74C3C"))
+                                }
+
+                                if e.isPrepayment {
+                                    HStack(spacing: 8) {
+                                        Spacer().frame(width: 16)
+                                        Picker("", selection: Binding(
+                                            get: { e.prepaymentType ?? .reduceTerm },
+                                            set: { $entry.wrappedValue.prepaymentType = $0 }
+                                        )) {
+                                            Text("Уменьшить срок").tag(PrepaymentType.reduceTerm)
+                                            Text("Уменьшить платёж").tag(PrepaymentType.reducePayment)
+                                        }
+                                        .pickerStyle(.segmented)
+                                    }
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                                }
+                            }
+                        }
+                        .padding(.vertical, 2)
+                        .animation(.spring(response: 0.25), value: e.isPrepayment)
+                        .id(e.id)  // нужен для ScrollViewReader.scrollTo
+                    }
+
+                    Button {
+                        addManualEntry()
+                    } label: {
+                        Label("Добавить платёж", systemImage: "plus.circle.fill")
+                            .foregroundStyle(Color(hex: "E74C3C"))
                     }
                 }
-                .padding(.vertical, 4)
             }
-
-            Section("Платежи (\(includedCount) из \(entries.count))") {
-                ForEach(entries.indices, id: \.self) { i in
-                    HStack(spacing: 12) {
-                        Circle()
-                            .fill(entries[i].isPast ? AppTheme.Colors.income : AppTheme.Colors.accent)
-                            .frame(width: 8, height: 8)
-                            .opacity(entries[i].isIncluded ? 1 : 0.25)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(entries[i].date, format: .dateTime
-                                .day().month(.wide).year().locale(locale))
-                                .font(.subheadline)
-                                .foregroundStyle(entries[i].isIncluded ? .primary : .secondary)
-                            if entries[i].isPast && entries[i].isIncluded {
-                                Text("Выполнен")
-                                    .font(.caption2)
-                                    .foregroundStyle(AppTheme.Colors.income)
-                            }
-                        }
-
-                        Spacer()
-
-                        if entries[i].isIncluded {
-                            HStack(spacing: 2) {
-                                TextField("", text: $entries[i].amountStr)
-                                    .keyboardType(.decimalPad)
-                                    .multilineTextAlignment(.trailing)
-                                    .frame(width: 80)
-                                    .foregroundStyle(.primary)
-                                Text(currencySymbol)
-                                    .font(.caption.bold())
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        Toggle("", isOn: $entries[i].isIncluded)
-                            .labelsHidden()
-                            .tint(AppTheme.Colors.accent)
+            .onChange(of: scrollToId) { _, newId in
+                guard let id = newId else { return }
+                // Небольшая задержка чтобы List успел обновить layout после сортировки/вставки
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        proxy.scrollTo(id, anchor: .center)
                     }
-                    .padding(.vertical, 2)
+                    scrollToId = nil
                 }
             }
         }
@@ -475,7 +766,7 @@ struct LoanScheduleEditorView: View {
             VStack(spacing: 0) {
                 Divider()
                 Button(action: onSave) {
-                    Label("Создать кредит", systemImage: "checkmark.circle.fill")
+                    Label(isEditing ? "Обновить график" : "Создать кредит", systemImage: "checkmark.circle.fill")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
@@ -492,6 +783,49 @@ struct LoanScheduleEditorView: View {
                 .padding(.vertical, 12)
             }
             .background(Color(.secondarySystemGroupedBackground))
+        }
+    }
+
+    // Откладывает сортировку на 350ms после последнего изменения даты.
+    // Если пользователь изменил дату в пикере, он успевает закрыть пикер до того как строка переместится.
+    private func scheduleSort(for entryId: UUID) {
+        let changeTime = Date()
+        lastDateChangeTime = changeTime
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            guard lastDateChangeTime == changeTime else { return }
+            withAnimation(.spring(response: 0.35)) {
+                entries.sort { $0.date < $1.date }
+            }
+            scrollToId = entryId
+        }
+    }
+
+    private func dotColor(for entry: DraftEntry) -> Color {
+        if entry.isPrepayment { return Color(hex: "E74C3C") }
+        return entry.isPast ? AppTheme.Colors.income : AppTheme.Colors.accent
+    }
+
+    private func addManualEntry() {
+        let lastDate = entries.last?.date ?? Date()
+        let nextDate = Calendar.current.date(byAdding: .month, value: 1, to: lastDate) ?? lastDate
+        // Берём сумму последнего платежа как дефолт для нового
+        let lastAmountStr: String = {
+            guard let last = entries.last, let amt = last.amount else { return "" }
+            return "\(NSDecimalNumber(decimal: amt).intValue)"
+        }()
+        let nextNum = (entries.map { $0.paymentNumber }.max() ?? 0) + 1
+        let newEntry = DraftEntry(
+            paymentNumber: nextNum,
+            date: nextDate,
+            amountStr: lastAmountStr,
+            isIncluded: true,
+            isManuallyAdded: true
+        )
+        let insertIdx = entries.firstIndex(where: { $0.date > nextDate }) ?? entries.endIndex
+        entries.insert(newEntry, at: insertIdx)
+        // Даём List один цикл на обновление перед прокруткой
+        DispatchQueue.main.async {
+            scrollToId = newEntry.id
         }
     }
 }

@@ -21,6 +21,8 @@ class LoanPayment {
     var isPrepayment: Bool = false
     var prepaymentType: PrepaymentType? = nil
     var fromAccountId: UUID? = nil
+    /// Идентификатор серии повторяющихся досрочных погашений (nil = одиночный платёж)
+    var recurringGroupId: UUID? = nil
 
     init(loanId: UUID, userId: UUID, date: Date, totalAmount: Decimal,
          isPrepayment: Bool = false, prepaymentType: PrepaymentType? = nil,
